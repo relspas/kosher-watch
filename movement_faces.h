@@ -87,4 +87,6 @@
 #include "doomsday_face.h"
 #include "book_face.h"
 #include "hebrew_date_face.h"
+#include "zmanim_face.h"
+#include "tachnun_face.h"
 // New includes go above this line.

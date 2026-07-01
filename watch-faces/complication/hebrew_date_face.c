@@ -31,7 +31,7 @@
 /* Fixed Hebrew calendar: 19-year Metonic cycle with the four postponement rules. */
 #define HEBREW_EPOCH -1373427L
 
-static bool hebrew_date_is_leap_year(uint16_t year) {
+bool hebrew_date_is_leap_year(uint16_t year) {
     uint8_t cycle_year = year % 19;
     return cycle_year == 0 || cycle_year == 3 || cycle_year == 6 || cycle_year == 8 ||
            cycle_year == 11 || cycle_year == 14 || cycle_year == 17;
@@ -46,7 +46,7 @@ static int32_t hebrew_date_new_year(uint16_t year) {
     return HEBREW_EPOCH + days;
 }
 
-static uint8_t hebrew_date_month_length(uint16_t year, uint8_t month) {
+uint8_t hebrew_date_month_length(uint16_t year, uint8_t month) {
     int32_t year_length = hebrew_date_new_year(year + 1) - hebrew_date_new_year(year);
 
     if (month == 0) return 30; // Tishrei
@@ -65,7 +65,7 @@ static uint8_t hebrew_date_month_length(uint16_t year, uint8_t month) {
     return month % 2 == 0 ? 30 : 29; // Nisan through Elul
 }
 
-static int32_t hebrew_date_fixed_from_gregorian(uint16_t year, uint8_t month, uint8_t day) {
+int32_t hebrew_date_fixed_from_gregorian(uint16_t year, uint8_t month, uint8_t day) {
     uint16_t prior_year = year - 1;
     int32_t fixed = 365L * prior_year + prior_year / 4 - prior_year / 100 + prior_year / 400;
 
@@ -77,29 +77,36 @@ static int32_t hebrew_date_fixed_from_gregorian(uint16_t year, uint8_t month, ui
     return fixed;
 }
 
+hebrew_date_t hebrew_date_from_gregorian(uint16_t year, uint8_t month, uint8_t day) {
+    int32_t fixed = hebrew_date_fixed_from_gregorian(year, month, day);
+    hebrew_date_t hebrew_date = { .year = year + 3760 };
+
+    while (fixed >= hebrew_date_new_year(hebrew_date.year + 1)) hebrew_date.year++;
+    while (fixed < hebrew_date_new_year(hebrew_date.year)) hebrew_date.year--;
+    hebrew_date.weekday = fixed % 7 + 1;
+    fixed -= hebrew_date_new_year(hebrew_date.year);
+    while (fixed >= hebrew_date_month_length(hebrew_date.year, hebrew_date.month)) {
+        fixed -= hebrew_date_month_length(hebrew_date.year, hebrew_date.month++);
+    }
+    hebrew_date.day = fixed + 1;
+
+    return hebrew_date;
+}
+
 static void hebrew_date_update_display(void) {
     static const char *const months_regular[] = {"TI", "CH", "KI", "TE", "SH", "AD", "NI", "IY", "SI", "TA", "AV", "EL"};
     static const char *const months_leap[] = {"TI", "CH", "KI", "TE", "SH", "A1", "A2", "NI", "IY", "SI", "TA", "AV", "EL"};
     watch_date_time_t date_time = movement_get_local_date_time();
     uint16_t gregorian_year = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
-    int32_t fixed = hebrew_date_fixed_from_gregorian(gregorian_year, date_time.unit.month, date_time.unit.day);
-    uint16_t hebrew_year = gregorian_year + 3760;
-    uint8_t hebrew_month = 0;
-    uint8_t hebrew_day;
+    hebrew_date_t hebrew_date = hebrew_date_from_gregorian(gregorian_year, date_time.unit.month, date_time.unit.day);
     char day[3];
     char bottom[7];
 
-    while (fixed >= hebrew_date_new_year(hebrew_year + 1)) hebrew_year++;
-    while (fixed < hebrew_date_new_year(hebrew_year)) hebrew_year--;
-    fixed -= hebrew_date_new_year(hebrew_year);
-    while (fixed >= hebrew_date_month_length(hebrew_year, hebrew_month)) {
-        fixed -= hebrew_date_month_length(hebrew_year, hebrew_month++);
-    }
-    hebrew_day = fixed + 1;
-
-    snprintf(day, sizeof(day), "%2u", hebrew_day);
-    snprintf(bottom, sizeof(bottom), "%4u%s", hebrew_year,
-             hebrew_date_is_leap_year(hebrew_year) ? months_leap[hebrew_month] : months_regular[hebrew_month]);
+    day[0] = hebrew_date.day < 10 ? ' ' : '0' + (hebrew_date.day / 10);
+    day[1] = '0' + (hebrew_date.day % 10);
+    day[2] = '\0';
+    snprintf(bottom, sizeof(bottom), "%4u%s", hebrew_date.year,
+             hebrew_date_is_leap_year(hebrew_date.year) ? months_leap[hebrew_date.month] : months_regular[hebrew_date.month]);
     watch_display_text(WATCH_POSITION_TOP_LEFT, "HE");
     watch_display_text(WATCH_POSITION_TOP_RIGHT, day);
     watch_display_text(WATCH_POSITION_BOTTOM, bottom);

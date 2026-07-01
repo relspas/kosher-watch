@@ -26,32 +26,27 @@
 
 #include "movement.h"
 
-typedef struct {
-    uint16_t year;
-    uint8_t month; // 0=Tishrei, 1=Cheshvan ... Adar/Nisan positions follow year type.
-    uint8_t day;
-    uint8_t weekday; // 1=Sunday ... 7=Shabbat.
-} hebrew_date_t;
+/*
+ * TACHNUN FACE
+ *
+ * Shows whether Tachanun is said today according to the conventions used by
+ * IsThereTachanunToday. Press Alarm to show the reason when Tachanun is not
+ * said.
+ */
 
 typedef struct {
-    // Anything you need to keep track of, put it here!
-    uint8_t unused;
-} hebrew_date_state_t;
+    bool showing_reason;
+} tachnun_state_t;
 
-void hebrew_date_face_setup(uint8_t watch_face_index, void ** context_ptr);
-void hebrew_date_face_activate(void *context);
-bool hebrew_date_face_loop(movement_event_t event, void *context);
-void hebrew_date_face_resign(void *context);
+void tachnun_face_setup(uint8_t watch_face_index, void ** context_ptr);
+void tachnun_face_activate(void *context);
+bool tachnun_face_loop(movement_event_t event, void *context);
+void tachnun_face_resign(void *context);
 
-bool hebrew_date_is_leap_year(uint16_t year);
-uint8_t hebrew_date_month_length(uint16_t year, uint8_t month);
-int32_t hebrew_date_fixed_from_gregorian(uint16_t year, uint8_t month, uint8_t day);
-hebrew_date_t hebrew_date_from_gregorian(uint16_t year, uint8_t month, uint8_t day);
-
-#define hebrew_date_face ((const watch_face_t){ \
-    hebrew_date_face_setup, \
-    hebrew_date_face_activate, \
-    hebrew_date_face_loop, \
-    hebrew_date_face_resign, \
+#define tachnun_face ((const watch_face_t){ \
+    tachnun_face_setup, \
+    tachnun_face_activate, \
+    tachnun_face_loop, \
+    tachnun_face_resign, \
     NULL, \
 })

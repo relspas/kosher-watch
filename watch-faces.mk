@@ -62,4 +62,6 @@ SRCS += \
   ./watch-faces/complication/doomsday_face.c \
   ./watch-faces/complication/book_face.c \
   ./watch-faces/complication/hebrew_date_face.c \
+  ./watch-faces/complication/zmanim_face.c \
+  ./watch-faces/complication/tachnun_face.c \
 # New watch faces go above this line.

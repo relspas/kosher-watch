@@ -83,4 +83,8 @@
 #include "tomato_face.h"
 #include "solar_time_face.h"
 #include "tide_face.h"
+#include "daf_yomi_face.h"
+#include "doomsday_face.h"
+#include "book_face.h"
+#include "hebrew_date_face.h"
 // New includes go above this line.

@@ -58,4 +58,8 @@ SRCS += \
   ./watch-faces/complication/tomato_face.c \
   ./watch-faces/clock/solar_time_face.c \
   ./watch-faces/complication/tide_face.c \
+  ./watch-faces/complication/daf_yomi_face.c \
+  ./watch-faces/complication/doomsday_face.c \
+  ./watch-faces/complication/book_face.c \
+  ./watch-faces/complication/hebrew_date_face.c \
 # New watch faces go above this line.

@@ -28,7 +28,12 @@
 #include "movement_faces.h"
 
 const watch_face_t watch_faces[] = {
+    // book_face,
+    // totp_face,
     clock_face,
+    hebrew_date_face,
+    daf_yomi_face,
+    // doomsday_face,
     world_clock_face,
     sunrise_sunset_face,
     moon_phase_face,

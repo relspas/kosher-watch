@@ -1,8 +1,16 @@
-Second Movement
-===============
+Kosher Watch
+============
 
-This is the successor refactor of the Movement firmware for [Sensor Watch](https://www.sensorwatch.net).
+Kosher Watch is a Jewish-focused firmware for the [Sensor Watch](https://www.sensorwatch.net). It was taken from Sensor Watch's Second Movement firmware and keeps the same build system, hardware support, and Movement watch-face framework while adding Jewish calendar and daily-practice faces.
 
+The default Kosher Watch face lineup includes the standard clock plus several Jewish faces:
+
+- **Hebrew Date**: shows the current Hebrew date using a fixed Hebrew calendar implementation.
+- **Daf Yomi**: shows the day's Daf Yomi masechet and daf.
+- **Zmanim**: shows common Jewish times for the current civil day, with configurable latitude and longitude.
+- **Tachnun**: shows whether Tachanun is said today and can display the reason when it is not said.
+
+Additional Sensor Watch / Second Movement faces remain available in the codebase and can be enabled or removed through `movement_config.h`.
 
 Getting dependencies
 -------------------------
@@ -11,7 +19,7 @@ You will need to install [the GNU Arm Embedded Toolchain](https://developer.arm.
 You will need to fetch the git submodules for this repository too, with `git submodule update --init --recursive` 
 
 
-Building Second Movement
+Building Kosher Watch
 ----------------------------
 You can build the default watch firmware with:
 

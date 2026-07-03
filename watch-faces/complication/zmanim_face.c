@@ -205,7 +205,7 @@ static bool _zmanim_compute(zmanim_state_t *state, zmanim_entry_t *zmanim) {
     zmanim[9].minute = _zmanim_local_minute_from_hours(sunset);
     memcpy(zmanim[10].label, "3STAR ", 7);
     zmanim[10].minute = _zmanim_local_minute_from_hours(night_3_stars);
-    memcpy(zmanim[11].label, "72MIn ", 7);
+    memcpy(zmanim[11].label, " 72MIn", 7);
     zmanim[11].minute = _zmanim_local_minute_from_hours(sunset + 1.2);
 
     return true;

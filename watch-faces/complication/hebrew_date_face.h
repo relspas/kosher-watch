@@ -34,8 +34,7 @@ typedef struct {
 } hebrew_date_t;
 
 typedef struct {
-    // Anything you need to keep track of, put it here!
-    uint8_t unused;
+    bool show_year;
 } hebrew_date_state_t;
 
 void hebrew_date_face_setup(uint8_t watch_face_index, void ** context_ptr);

@@ -93,9 +93,15 @@ hebrew_date_t hebrew_date_from_gregorian(uint16_t year, uint8_t month, uint8_t d
     return hebrew_date;
 }
 
-static void hebrew_date_update_display(void) {
-    static const char *const months_regular[] = {"TI", "CH", "KI", "TE", "SH", "AD", "NI", "IY", "SI", "TA", "AV", "EL"};
-    static const char *const months_leap[] = {"TI", "CH", "KI", "TE", "SH", "A1", "A2", "NI", "IY", "SI", "TA", "AV", "EL"};
+static void hebrew_date_update_display(hebrew_date_state_t *state) {
+    static const char *const months_regular[] = {
+        "Tishri", "Cheshv", "Kislev", "Tevet ", "Shevat", "Adar  ",
+        "Nisan ", "Iyar  ", "Sivan ", " TAMUZ", "Av    ", "Elul  "
+    };
+    static const char *const months_leap[] = {
+        "Tishri", "Cheshv", "Kislev", "Tevet ", "Shevat", "Adar 1", "Adar 2",
+        "Nisan ", "Iyar  ", "Sivan ", "Tamuz ", "Av    ", "Elul  "
+    };
     watch_date_time_t date_time = movement_get_local_date_time();
     uint16_t gregorian_year = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
     hebrew_date_t hebrew_date = hebrew_date_from_gregorian(gregorian_year, date_time.unit.month, date_time.unit.day);
@@ -105,8 +111,12 @@ static void hebrew_date_update_display(void) {
     day[0] = hebrew_date.day < 10 ? ' ' : '0' + (hebrew_date.day / 10);
     day[1] = '0' + (hebrew_date.day % 10);
     day[2] = '\0';
-    snprintf(bottom, sizeof(bottom), "%4u%s", hebrew_date.year,
-             hebrew_date_is_leap_year(hebrew_date.year) ? months_leap[hebrew_date.month] : months_regular[hebrew_date.month]);
+    if (state->show_year) {
+        snprintf(bottom, sizeof(bottom), "  %4u", hebrew_date.year);
+    } else {
+        snprintf(bottom, sizeof(bottom), "%s",
+                 hebrew_date_is_leap_year(hebrew_date.year) ? months_leap[hebrew_date.month] : months_regular[hebrew_date.month]);
+    }
     watch_display_text(WATCH_POSITION_TOP_LEFT, "HE");
     watch_display_text(WATCH_POSITION_TOP_RIGHT, day);
     watch_display_text(WATCH_POSITION_BOTTOM, bottom);
@@ -123,26 +133,36 @@ void hebrew_date_face_setup(uint8_t watch_face_index, void ** context_ptr) {
 }
 
 void hebrew_date_face_activate(void *context) {
-    (void) context;
-    hebrew_date_update_display();
+    hebrew_date_state_t *state = (hebrew_date_state_t *)context;
+    state->show_year = false;
+    hebrew_date_update_display(state);
 }
 
 bool hebrew_date_face_loop(movement_event_t event, void *context) {
-    (void) context;
+    hebrew_date_state_t *state = (hebrew_date_state_t *)context;
 
     switch (event.event_type) {
         case EVENT_ACTIVATE:
         case EVENT_TICK:
         case EVENT_LOW_ENERGY_UPDATE:
-            hebrew_date_update_display();
+            hebrew_date_update_display(state);
             break;
         case EVENT_LIGHT_BUTTON_UP:
             // You can use the Light button for your own purposes. Note that by default, Movement will also
             // illuminate the LED in response to EVENT_LIGHT_BUTTON_DOWN; to suppress that behavior, add an
             // empty case for EVENT_LIGHT_BUTTON_DOWN.
             break;
+        case EVENT_ALARM_BUTTON_DOWN:
+            break;
+        case EVENT_ALARM_LONG_PRESS:
+        case EVENT_ALARM_REALLY_LONG_PRESS:
+            state->show_year = true;
+            hebrew_date_update_display(state);
+            break;
         case EVENT_ALARM_BUTTON_UP:
-            // Just in case you have need for another button.
+        case EVENT_ALARM_LONG_UP:
+            state->show_year = false;
+            hebrew_date_update_display(state);
             break;
         case EVENT_TIMEOUT:
             // Your watch face will receive this event after a period of inactivity. If it makes sense to resign,

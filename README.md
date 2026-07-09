@@ -59,6 +59,7 @@ Emulating the firmware
 You may want to test out changes in the emulator first. To do this, you'll need to install [emscripten](https://emscripten.org/), then run:
 
 ```
+source emsdk/emsdk_env.sh
 emmake make BOARD=sensorwatch_red DISPLAY=classic
 python3 -m http.server -d build-sim
 ```

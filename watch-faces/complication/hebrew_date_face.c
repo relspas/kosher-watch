@@ -27,9 +27,12 @@
 #include <stdio.h>
 #include "hebrew_date_face.h"
 #include "watch_rtc.h"
+#include "location_settings.h"
+#include "sunriset.h"
 
 /* Fixed Hebrew calendar: 19-year Metonic cycle with the four postponement rules. */
 #define HEBREW_EPOCH -1373427L
+#define HEBREW_DATE_ALOT_DEGREES -16.1
 
 bool hebrew_date_is_leap_year(uint16_t year) {
     uint8_t cycle_year = year % 19;
@@ -93,20 +96,103 @@ hebrew_date_t hebrew_date_from_gregorian(uint16_t year, uint8_t month, uint8_t d
     return hebrew_date;
 }
 
+static uint8_t hebrew_date_gregorian_month_length(uint16_t year, uint8_t month) {
+    static const uint8_t month_lengths[] = {
+        31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+    };
+
+    if (month == 2 && year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) return 29;
+
+    return month_lengths[month - 1];
+}
+
+static void hebrew_date_advance_gregorian_one_day(uint16_t *year, uint8_t *month, uint8_t *day) {
+    (*day)++;
+    if (*day <= hebrew_date_gregorian_month_length(*year, *month)) return;
+
+    *day = 1;
+    (*month)++;
+    if (*month <= 12) return;
+
+    *month = 1;
+    (*year)++;
+}
+
+static int16_t hebrew_date_local_minute_from_hours(double hours) {
+    int16_t minutes;
+
+    while (hours < 0) hours += 24.0;
+    while (hours >= 24.0) hours -= 24.0;
+
+    minutes = (int16_t)(hours * 60.0 + 0.5);
+
+    while (minutes >= 1440) minutes -= 1440;
+
+    return minutes;
+}
+
+static bool hebrew_date_get_display_date(watch_date_time_t date_time, uint16_t *year, uint8_t *month, uint8_t *day, bool *after_sunset_before_alot) {
+    movement_location_t movement_location = location_settings_load_location();
+    double lat, lon, hours_from_utc, sunrise, sunset, dawn, night_16_1;
+    int16_t current_minute;
+    int16_t sunset_minute;
+    int16_t dawn_minute;
+
+    if (movement_location.reg == 0) return false;
+
+    *year = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
+    *month = date_time.unit.month;
+    *day = date_time.unit.day;
+
+    lat = (double)((int16_t)movement_location.bit.latitude) / 100.0;
+    lon = (double)((int16_t)movement_location.bit.longitude) / 100.0;
+    hours_from_utc = ((double)movement_get_timezone_offset_for_date(date_time)) / 3600.0;
+
+    if (sun_rise_set(*year, *month, *day, lon, lat, &sunrise, &sunset) != 0) return false;
+    if (__sunriset__(*year, *month, *day, lon, lat, HEBREW_DATE_ALOT_DEGREES, 0, &dawn, &night_16_1) != 0) return false;
+
+    sunset += hours_from_utc;
+    dawn += hours_from_utc;
+
+    current_minute = date_time.unit.hour * 60 + date_time.unit.minute;
+    sunset_minute = hebrew_date_local_minute_from_hours(sunset);
+    dawn_minute = hebrew_date_local_minute_from_hours(dawn);
+    *after_sunset_before_alot = current_minute >= sunset_minute || current_minute < dawn_minute;
+
+    if (current_minute >= sunset_minute) {
+        hebrew_date_advance_gregorian_one_day(year, month, day);
+    }
+
+    return true;
+}
+
 static void hebrew_date_update_display(hebrew_date_state_t *state) {
     static const char *const months_regular[] = {
-        "Tishri", "Cheshv", "Kislev", "Tevet ", "Shevat", "Adar  ",
-        "Nisan ", "Iyar  ", "Sivan ", " TAMUZ", "Av    ", "Elul  "
+        "Tishre", "Cheshv", "Kislev", "Tevet ", "Shevat", "Adar  ",
+        "Nisan ", "Iyar  ", "Sivan ", " TAMUZ", " Av   ", "Elul  "
     };
     static const char *const months_leap[] = {
-        "Tishri", "Cheshv", "Kislev", "Tevet ", "Shevat", "Adar 1", "Adar 2",
-        "Nisan ", "Iyar  ", "Sivan ", "Tamuz ", "Av    ", "Elul  "
+        "Tishre", "Cheshv", "Kislev", "Tevet ", "Shevat", "Adar 1", "Adar 2",
+        "Nisan ", "Iyar  ", "Sivan ", "TAMUZ", " Av   ", "Elul  "
     };
     watch_date_time_t date_time = movement_get_local_date_time();
-    uint16_t gregorian_year = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
-    hebrew_date_t hebrew_date = hebrew_date_from_gregorian(gregorian_year, date_time.unit.month, date_time.unit.day);
+    uint16_t gregorian_year;
+    uint8_t gregorian_month;
+    uint8_t gregorian_day;
+    bool after_sunset_before_alot = false;
+    hebrew_date_t hebrew_date;
     char day[3];
     char bottom[7];
+
+    if (!hebrew_date_get_display_date(date_time, &gregorian_year, &gregorian_month, &gregorian_day, &after_sunset_before_alot)) {
+        watch_clear_indicator(WATCH_INDICATOR_PM);
+        watch_display_text(WATCH_POSITION_TOP_LEFT, "HE");
+        watch_display_text(WATCH_POSITION_TOP_RIGHT, "  ");
+        watch_display_text(WATCH_POSITION_BOTTOM, "No LOC");
+        return;
+    }
+
+    hebrew_date = hebrew_date_from_gregorian(gregorian_year, gregorian_month, gregorian_day);
 
     day[0] = hebrew_date.day < 10 ? ' ' : '0' + (hebrew_date.day / 10);
     day[1] = '0' + (hebrew_date.day % 10);
@@ -120,6 +206,8 @@ static void hebrew_date_update_display(hebrew_date_state_t *state) {
     watch_display_text(WATCH_POSITION_TOP_LEFT, "HE");
     watch_display_text(WATCH_POSITION_TOP_RIGHT, day);
     watch_display_text(WATCH_POSITION_BOTTOM, bottom);
+    if (after_sunset_before_alot) watch_set_indicator(WATCH_INDICATOR_PM);
+    else watch_clear_indicator(WATCH_INDICATOR_PM);
 }
 
 void hebrew_date_face_setup(uint8_t watch_face_index, void ** context_ptr) {
@@ -135,11 +223,18 @@ void hebrew_date_face_setup(uint8_t watch_face_index, void ** context_ptr) {
 void hebrew_date_face_activate(void *context) {
     hebrew_date_state_t *state = (hebrew_date_state_t *)context;
     state->show_year = false;
+    location_settings_load_working_location(&state->location_settings);
     hebrew_date_update_display(state);
 }
 
 bool hebrew_date_face_loop(movement_event_t event, void *context) {
     hebrew_date_state_t *state = (hebrew_date_state_t *)context;
+    bool location_settings_finished = false;
+
+    if (location_settings_handle_event(&state->location_settings, event, &location_settings_finished)) {
+        if (location_settings_finished) hebrew_date_update_display(state);
+        return true;
+    }
 
     switch (event.event_type) {
         case EVENT_ACTIVATE:
@@ -155,9 +250,9 @@ bool hebrew_date_face_loop(movement_event_t event, void *context) {
         case EVENT_ALARM_BUTTON_DOWN:
             break;
         case EVENT_ALARM_LONG_PRESS:
+            location_settings_begin(&state->location_settings, event);
+            break;
         case EVENT_ALARM_REALLY_LONG_PRESS:
-            state->show_year = true;
-            hebrew_date_update_display(state);
             break;
         case EVENT_ALARM_BUTTON_UP:
         case EVENT_ALARM_LONG_UP:
@@ -183,7 +278,11 @@ bool hebrew_date_face_loop(movement_event_t event, void *context) {
 }
 
 void hebrew_date_face_resign(void *context) {
-    (void) context;
+    hebrew_date_state_t *state = (hebrew_date_state_t *)context;
 
     // handle any cleanup before your watch face goes off-screen.
+    state->show_year = false;
+    state->location_settings.page = 0;
+    state->location_settings.active_digit = 0;
+    location_settings_persist_if_changed(&state->location_settings);
 }

@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2026 Rafi
+ * Copyright (c) 2026
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,34 +25,27 @@
 #pragma once
 
 #include "movement.h"
-#include "location_settings.h"
 
 typedef struct {
-    uint16_t year;
-    uint8_t month; // 0=Tishrei, 1=Cheshvan ... Adar/Nisan positions follow year type.
-    uint8_t day;
-    uint8_t weekday; // 1=Sunday ... 7=Shabbat.
-} hebrew_date_t;
+    uint8_t sign: 1;
+    uint8_t hundreds: 5;
+    uint8_t tens: 5;
+    uint8_t ones: 4;
+    uint8_t tenths: 4;
+    uint8_t hundredths: 4;
+} location_lat_lon_settings_t;
 
 typedef struct {
-    bool show_year;
-    location_settings_state_t location_settings;
-} hebrew_date_state_t;
+    uint8_t page;
+    uint8_t active_digit;
+    bool location_changed;
+    location_lat_lon_settings_t working_latitude;
+    location_lat_lon_settings_t working_longitude;
+} location_settings_state_t;
 
-void hebrew_date_face_setup(uint8_t watch_face_index, void ** context_ptr);
-void hebrew_date_face_activate(void *context);
-bool hebrew_date_face_loop(movement_event_t event, void *context);
-void hebrew_date_face_resign(void *context);
-
-bool hebrew_date_is_leap_year(uint16_t year);
-uint8_t hebrew_date_month_length(uint16_t year, uint8_t month);
-int32_t hebrew_date_fixed_from_gregorian(uint16_t year, uint8_t month, uint8_t day);
-hebrew_date_t hebrew_date_from_gregorian(uint16_t year, uint8_t month, uint8_t day);
-
-#define hebrew_date_face ((const watch_face_t){ \
-    hebrew_date_face_setup, \
-    hebrew_date_face_activate, \
-    hebrew_date_face_loop, \
-    hebrew_date_face_resign, \
-    NULL, \
-})
+movement_location_t location_settings_load_location(void);
+void location_settings_load_working_location(location_settings_state_t *state);
+void location_settings_persist_if_changed(location_settings_state_t *state);
+bool location_settings_is_active(location_settings_state_t *state);
+void location_settings_begin(location_settings_state_t *state, movement_event_t event);
+bool location_settings_handle_event(location_settings_state_t *state, movement_event_t event, bool *finished);

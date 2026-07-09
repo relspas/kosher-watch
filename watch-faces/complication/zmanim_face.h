@@ -25,6 +25,7 @@
 #pragma once
 
 #include "movement.h"
+#include "location_settings.h"
 
 /*
  * ZMANIM FACE
@@ -36,23 +37,10 @@
  */
 
 typedef struct {
-    uint8_t sign: 1;
-    uint8_t hundreds: 5;
-    uint8_t tens: 5;
-    uint8_t ones: 4;
-    uint8_t tenths: 4;
-    uint8_t hundredths: 4;
-} zmanim_lat_lon_settings_t;
-
-typedef struct {
-    uint8_t page;
-    uint8_t active_digit;
     uint8_t zman_index;
     bool showing_time;
-    bool location_changed;
     uint8_t longLatToUse;
-    zmanim_lat_lon_settings_t working_latitude;
-    zmanim_lat_lon_settings_t working_longitude;
+    location_settings_state_t location_settings;
 } zmanim_state_t;
 
 void zmanim_face_setup(uint8_t watch_face_index, void ** context_ptr);

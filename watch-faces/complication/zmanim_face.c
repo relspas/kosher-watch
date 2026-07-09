@@ -29,7 +29,7 @@
 #include "watch.h"
 #include "watch_utility.h"
 #include "watch_common_display.h"
-#include "filesystem.h"
+#include "location_settings.h"
 #include "sunriset.h"
 
 #if __EMSCRIPTEN__
@@ -48,73 +48,17 @@ typedef struct {
 
 static const uint8_t _zmanim_location_count = sizeof(zmanimLongLatPresets) / sizeof(zmanim_long_lat_presets_t);
 
-static void _zmanim_persist_location(movement_location_t new_location) {
-    movement_location_t maybe_location = {0};
-
-    filesystem_read_file("location.u32", (char *) &maybe_location.reg, sizeof(movement_location_t));
-    if (new_location.reg != maybe_location.reg) {
-        filesystem_write_file("location.u32", (char *) &new_location.reg, sizeof(movement_location_t));
-    }
-}
-
-static movement_location_t _zmanim_load_location(void) {
-    movement_location_t location = {0};
-
-    filesystem_read_file("location.u32", (char *) &location.reg, sizeof(movement_location_t));
-
-    return location;
-}
-
 static movement_location_t _zmanim_get_location(zmanim_state_t *state) {
     movement_location_t movement_location = {0};
 
     if (state->longLatToUse == 0 || _zmanim_location_count <= 1) {
-        movement_location = _zmanim_load_location();
+        movement_location = location_settings_load_location();
     } else {
         movement_location.bit.latitude = zmanimLongLatPresets[state->longLatToUse].latitude;
         movement_location.bit.longitude = zmanimLongLatPresets[state->longLatToUse].longitude;
     }
 
     return movement_location;
-}
-
-static int16_t _zmanim_latlon_from_struct(zmanim_lat_lon_settings_t val) {
-    return (val.sign ? -1 : 1) *
-        (
-            val.hundreds * 10000 +
-            val.tens * 1000 +
-            val.ones * 100 +
-            val.tenths * 10 +
-            val.hundredths
-        );
-}
-
-static zmanim_lat_lon_settings_t _zmanim_struct_from_latlon(int16_t val) {
-    zmanim_lat_lon_settings_t retval;
-
-    retval.sign = val < 0;
-    val = abs(val);
-    retval.hundredths = val % 10;
-    val /= 10;
-    retval.tenths = val % 10;
-    val /= 10;
-    retval.ones = val % 10;
-    val /= 10;
-    retval.tens = val % 10;
-    val /= 10;
-    retval.hundreds = val % 10;
-
-    return retval;
-}
-
-static void _zmanim_update_location_register(zmanim_state_t *state) {
-    if (state->location_changed) {
-        movement_location_t movement_location = {0};
-        movement_location.bit.latitude = _zmanim_latlon_from_struct(state->working_latitude);
-        movement_location.bit.longitude = _zmanim_latlon_from_struct(state->working_longitude);
-        _zmanim_persist_location(movement_location);
-        state->location_changed = false;
-    }
 }
 
 static int16_t _zmanim_local_minute_from_hours(double hours) {
@@ -183,11 +127,11 @@ static bool _zmanim_compute(zmanim_state_t *state, zmanim_entry_t *zmanim) {
     if (gra_day < 0) gra_day += 24.0;
     if (magen_avraham_day < 0) magen_avraham_day += 24.0;
 
-    memcpy(zmanim[0].label, "dAWN  ", 7);
+    memcpy(zmanim[0].label, " AlOt ", 7);
     zmanim[0].minute = _zmanim_local_minute_from_hours(dawn);
-    memcpy(zmanim[1].label, "TALIS ", 7);
+    memcpy(zmanim[1].label, " TALIS", 7);
     zmanim[1].minute = _zmanim_local_minute_from_hours(talis);
-    memcpy(zmanim[2].label, "SUNRIS", 7);
+    memcpy(zmanim[2].label, " NEtZ ", 7);
     zmanim[2].minute = _zmanim_local_minute_from_hours(sunrise);
     memcpy(zmanim[3].label, "MA SHM", 7);
     zmanim[3].minute = _zmanim_local_minute_from_hours(dawn + magen_avraham_day / 4.0);
@@ -195,13 +139,13 @@ static bool _zmanim_compute(zmanim_state_t *state, zmanim_entry_t *zmanim) {
     zmanim[4].minute = _zmanim_local_minute_from_hours(sunrise + gra_day / 4.0);
     memcpy(zmanim[5].label, "SHACH ", 7);
     zmanim[5].minute = _zmanim_local_minute_from_hours(sunrise + gra_day / 3.0);
-    memcpy(zmanim[6].label, "MIddAY", 7);
+    memcpy(zmanim[6].label, "Chatzo", 7);
     zmanim[6].minute = _zmanim_local_minute_from_hours(sunrise + gra_day / 2.0);
     memcpy(zmanim[7].label, "MInCHA", 7);
     zmanim[7].minute = _zmanim_local_minute_from_hours(sunrise + gra_day / 2.0 + gra_day / 24.0);
-    memcpy(zmanim[8].label, "PLAG  ", 7);
+    memcpy(zmanim[8].label, " PlAG ", 7);
     zmanim[8].minute = _zmanim_local_minute_from_hours(sunset - gra_day * 1.25 / 12.0);
-    memcpy(zmanim[9].label, "SUNSET", 7);
+    memcpy(zmanim[9].label, " SHKIA", 7);
     zmanim[9].minute = _zmanim_local_minute_from_hours(sunset);
     memcpy(zmanim[10].label, "3STAR ", 7);
     zmanim[10].minute = _zmanim_local_minute_from_hours(night_3_stars);
@@ -222,7 +166,7 @@ static void _zmanim_face_update(zmanim_state_t *state) {
     if (!_zmanim_compute(state, zmanim)) {
         watch_clear_indicator(WATCH_INDICATOR_PM);
         watch_clear_indicator(WATCH_INDICATOR_24H);
-        watch_display_text_with_fallback(WATCH_POSITION_BOTTOM, "No LOC", "No Loc");
+        watch_display_text(WATCH_POSITION_BOTTOM, "No Loc");
         return;
     }
 
@@ -235,194 +179,6 @@ static void _zmanim_face_update(zmanim_state_t *state) {
         watch_clear_indicator(WATCH_INDICATOR_PM);
         watch_clear_indicator(WATCH_INDICATOR_24H);
         watch_display_text(WATCH_POSITION_BOTTOM, zmanim[state->zman_index].label);
-    }
-}
-
-static void _zmanim_update_settings_display(movement_event_t event, zmanim_state_t *state) {
-    char buf[12];
-
-    watch_clear_display();
-    watch_clear_indicator(WATCH_INDICATOR_PM);
-    watch_clear_indicator(WATCH_INDICATOR_24H);
-
-    switch (state->page) {
-        case 0:
-            return;
-        case 1:
-            watch_display_text_with_fallback(WATCH_POSITION_TOP_LEFT, "LAT", "LA");
-            if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
-                watch_set_decimal_if_available();
-                watch_display_character('0' + state->working_latitude.tens, 4);
-                watch_display_character('0' + state->working_latitude.ones, 5);
-                watch_display_character('0' + state->working_latitude.tenths, 6);
-                watch_display_character('0' + state->working_latitude.hundredths, 7);
-                watch_display_character('#', 8);
-                watch_display_character(state->working_latitude.sign ? 'S' : 'N', 9);
-
-                if (event.subsecond % 2) {
-                    watch_display_character(' ', 4 + state->active_digit);
-                    if (state->active_digit == 4) watch_display_character(' ', 9);
-                }
-            } else {
-                sprintf(buf, "%c %04d", state->working_latitude.sign ? '-' : '+', abs(_zmanim_latlon_from_struct(state->working_latitude)));
-                if (event.subsecond % 2) buf[state->active_digit] = ' ';
-                watch_display_text(WATCH_POSITION_BOTTOM, buf);
-            }
-            break;
-        case 2:
-            watch_display_text_with_fallback(WATCH_POSITION_TOP_LEFT, "LON", "LO");
-            if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
-                watch_set_decimal_if_available();
-                if (state->working_longitude.hundreds == 1) watch_set_pixel(0, 22);
-                watch_display_character('0' + state->working_longitude.tens, 4);
-                watch_display_character('0' + state->working_longitude.ones, 5);
-                watch_display_character('0' + state->working_longitude.tenths, 6);
-                watch_display_character('0' + state->working_longitude.hundredths, 7);
-                watch_display_character('#', 8);
-                watch_display_character(state->working_longitude.sign ? 'W' : 'E', 9);
-                if (event.subsecond % 2) {
-                    watch_display_character(' ', 4 + state->active_digit);
-                    if (state->active_digit == 0) watch_clear_pixel(0, 22);
-                    if (state->active_digit == 4) watch_display_character(' ', 9);
-                }
-            } else {
-                sprintf(buf, "%c%05d", state->working_longitude.sign ? '-' : '+', abs(_zmanim_latlon_from_struct(state->working_longitude)));
-                if (event.subsecond % 2) buf[state->active_digit] = ' ';
-                watch_display_text(WATCH_POSITION_BOTTOM, buf);
-            }
-            break;
-    }
-}
-
-static void _zmanim_advance_digit(zmanim_state_t *state) {
-    state->location_changed = true;
-    if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
-        switch (state->page) {
-            case 1:
-                switch (state->active_digit) {
-                    case 0:
-                        state->working_latitude.tens = (state->working_latitude.tens + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_latitude)) > 9000) {
-                            state->working_latitude.ones = 0;
-                            state->working_latitude.tenths = 0;
-                            state->working_latitude.hundredths = 0;
-                        }
-                        break;
-                    case 1:
-                        state->working_latitude.ones = (state->working_latitude.ones + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_latitude)) > 9000) state->working_latitude.ones = 0;
-                        break;
-                    case 2:
-                        state->working_latitude.tenths = (state->working_latitude.tenths + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_latitude)) > 9000) state->working_latitude.tenths = 0;
-                        break;
-                    case 3:
-                        state->working_latitude.hundredths = (state->working_latitude.hundredths + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_latitude)) > 9000) state->working_latitude.hundredths = 0;
-                        break;
-                    case 4:
-                        state->working_latitude.sign++;
-                        break;
-                }
-                break;
-            case 2:
-                switch (state->active_digit) {
-                    case 0:
-                        state->working_longitude.tens++;
-                        if (state->working_longitude.tens >= 10) {
-                            state->working_longitude.tens = 0;
-                            state->working_longitude.hundreds++;
-                        }
-                        if (abs(_zmanim_latlon_from_struct(state->working_longitude)) > 18000) {
-                            state->working_longitude.hundreds = 0;
-                            state->working_longitude.tens = 0;
-                            state->working_longitude.ones = 0;
-                            state->working_longitude.tenths = 0;
-                            state->working_longitude.hundredths = 0;
-                        }
-                        break;
-                    case 1:
-                        state->working_longitude.ones = (state->working_longitude.ones + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_longitude)) > 18000) state->working_longitude.ones = 0;
-                        break;
-                    case 2:
-                        state->working_longitude.tenths = (state->working_longitude.tenths + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_longitude)) > 18000) state->working_longitude.tenths = 0;
-                        break;
-                    case 3:
-                        state->working_longitude.hundredths = (state->working_longitude.hundredths + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_longitude)) > 18000) state->working_longitude.hundredths = 0;
-                        break;
-                    case 4:
-                        state->working_longitude.sign++;
-                        break;
-                }
-                break;
-        }
-    } else {
-        switch (state->page) {
-            case 1:
-                switch (state->active_digit) {
-                    case 0:
-                        state->working_latitude.sign++;
-                        break;
-                    case 1:
-                        break;
-                    case 2:
-                        state->working_latitude.tens = (state->working_latitude.tens + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_latitude)) > 9000) {
-                            state->working_latitude.ones = 0;
-                            state->working_latitude.tenths = 0;
-                            state->working_latitude.hundredths = 0;
-                        }
-                        break;
-                    case 3:
-                        state->working_latitude.ones = (state->working_latitude.ones + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_latitude)) > 9000) state->working_latitude.ones = 0;
-                        break;
-                    case 4:
-                        state->working_latitude.tenths = (state->working_latitude.tenths + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_latitude)) > 9000) state->working_latitude.tenths = 0;
-                        break;
-                    case 5:
-                        state->working_latitude.hundredths = (state->working_latitude.hundredths + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_latitude)) > 9000) state->working_latitude.hundredths = 0;
-                        break;
-                }
-                break;
-            case 2:
-                switch (state->active_digit) {
-                    case 0:
-                        state->working_longitude.sign++;
-                        break;
-                    case 1:
-                        state->working_longitude.hundreds = (state->working_longitude.hundreds + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_longitude)) > 18000) {
-                            state->working_longitude.tens = 8;
-                            state->working_longitude.ones = 0;
-                            state->working_longitude.tenths = 0;
-                            state->working_longitude.hundredths = 0;
-                        }
-                        break;
-                    case 2:
-                        state->working_longitude.tens = (state->working_longitude.tens + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_longitude)) > 18000) state->working_longitude.tens = 0;
-                        break;
-                    case 3:
-                        state->working_longitude.ones = (state->working_longitude.ones + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_longitude)) > 18000) state->working_longitude.ones = 0;
-                        break;
-                    case 4:
-                        state->working_longitude.tenths = (state->working_longitude.tenths + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_longitude)) > 18000) state->working_longitude.tenths = 0;
-                        break;
-                    case 5:
-                        state->working_longitude.hundredths = (state->working_longitude.hundredths + 1) % 10;
-                        if (abs(_zmanim_latlon_from_struct(state->working_longitude)) > 18000) state->working_longitude.hundredths = 0;
-                        break;
-                }
-                break;
-        }
     }
 }
 
@@ -453,13 +209,17 @@ void zmanim_face_activate(void *context) {
 #endif
 
     zmanim_state_t *state = (zmanim_state_t *)context;
-    movement_location_t movement_location = _zmanim_load_location();
-    state->working_latitude = _zmanim_struct_from_latlon(movement_location.bit.latitude);
-    state->working_longitude = _zmanim_struct_from_latlon(movement_location.bit.longitude);
+    location_settings_load_working_location(&state->location_settings);
 }
 
 bool zmanim_face_loop(movement_event_t event, void *context) {
     zmanim_state_t *state = (zmanim_state_t *)context;
+    bool location_settings_finished = false;
+
+    if (location_settings_handle_event(&state->location_settings, event, &location_settings_finished)) {
+        if (location_settings_finished) _zmanim_face_update(state);
+        return true;
+    }
 
     switch (event.event_type) {
         case EVENT_ACTIVATE:
@@ -467,84 +227,43 @@ bool zmanim_face_loop(movement_event_t event, void *context) {
             break;
         case EVENT_LOW_ENERGY_UPDATE:
         case EVENT_TICK:
-            if (state->page == 0) {
-                if (event.event_type == EVENT_LOW_ENERGY_UPDATE && !watch_sleep_animation_is_running()) watch_start_sleep_animation(1000);
-                _zmanim_face_update(state);
-            } else {
-                _zmanim_update_settings_display(event, state);
-            }
+            if (event.event_type == EVENT_LOW_ENERGY_UPDATE && !watch_sleep_animation_is_running()) watch_start_sleep_animation(1000);
+            _zmanim_face_update(state);
             break;
         case EVENT_LIGHT_BUTTON_DOWN:
-            if (state->page) {
-                if (watch_get_lcd_type() == WATCH_LCD_TYPE_CUSTOM) {
-                    state->active_digit++;
-                    if (state->active_digit > 4) {
-                        state->active_digit = 0;
-                        state->page = (state->page + 1) % 3;
-                        _zmanim_update_location_register(state);
-                    }
-                } else {
-                    state->active_digit++;
-                    if (state->page == 1 && state->active_digit == 1) state->active_digit++;
-                    if (state->active_digit > 5) {
-                        state->active_digit = 0;
-                        state->page = (state->page + 1) % 3;
-                        _zmanim_update_location_register(state);
-                    }
-                }
-                _zmanim_update_settings_display(event, state);
-            } else if (_zmanim_location_count <= 1) {
+            if (_zmanim_location_count <= 1) {
                 movement_illuminate_led();
             }
-            if (state->page == 0) {
-                movement_request_tick_frequency(1);
-                _zmanim_face_update(state);
-            }
+            movement_request_tick_frequency(1);
+            _zmanim_face_update(state);
             break;
         case EVENT_LIGHT_LONG_PRESS:
             if (_zmanim_location_count <= 1) break;
-            else if (!state->page) movement_illuminate_led();
+            else movement_illuminate_led();
             break;
         case EVENT_LIGHT_BUTTON_UP:
-            if (state->page == 0 && _zmanim_location_count > 1) {
+            if (_zmanim_location_count > 1) {
                 state->longLatToUse = (state->longLatToUse + 1) % _zmanim_location_count;
                 _zmanim_face_update(state);
             }
             break;
         case EVENT_ALARM_BUTTON_UP:
-            if (state->page) {
-                _zmanim_advance_digit(state);
-                _zmanim_update_settings_display(event, state);
-            } else {
-                if (state->showing_time) state->zman_index = (state->zman_index + 1) % ZMANIM_COUNT;
-                state->showing_time = !state->showing_time;
-                _zmanim_face_update(state);
-            }
+            if (state->showing_time) state->zman_index = (state->zman_index + 1) % ZMANIM_COUNT;
+            state->showing_time = !state->showing_time;
+            _zmanim_face_update(state);
             break;
         case EVENT_ALARM_LONG_PRESS:
-            if (state->page == 0) {
-                if (state->longLatToUse != 0) {
-                    state->longLatToUse = 0;
-                    _zmanim_face_update(state);
-                    break;
-                }
-                state->page++;
-                state->active_digit = 0;
-                watch_clear_display();
-                movement_request_tick_frequency(4);
-                _zmanim_update_settings_display(event, state);
-            } else {
-                state->active_digit = 0;
-                state->page = 0;
-                _zmanim_update_location_register(state);
+            if (state->longLatToUse != 0) {
+                state->longLatToUse = 0;
                 _zmanim_face_update(state);
+                break;
             }
+            location_settings_begin(&state->location_settings, event);
             break;
         case EVENT_TIMEOUT:
-            if (_zmanim_load_location().reg == 0) {
+            if (location_settings_load_location().reg == 0) {
                 movement_move_to_face(0);
-            } else if (state->page || state->showing_time || state->zman_index) {
-                state->page = 0;
+            } else if (state->showing_time || state->zman_index) {
                 state->showing_time = false;
                 state->zman_index = 0;
                 movement_request_tick_frequency(1);
@@ -560,9 +279,9 @@ bool zmanim_face_loop(movement_event_t event, void *context) {
 
 void zmanim_face_resign(void *context) {
     zmanim_state_t *state = (zmanim_state_t *)context;
-    state->page = 0;
-    state->active_digit = 0;
     state->showing_time = false;
     state->zman_index = 0;
-    _zmanim_update_location_register(state);
+    state->location_settings.page = 0;
+    state->location_settings.active_digit = 0;
+    location_settings_persist_if_changed(&state->location_settings);
 }

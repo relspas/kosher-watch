@@ -193,12 +193,12 @@ static void _tachnun_update(tachnun_state_t *state) {
     watch_clear_colon();
     watch_clear_indicator(WATCH_INDICATOR_PM);
     watch_clear_indicator(WATCH_INDICATOR_24H);
-    watch_display_text(WATCH_POSITION_TOP_RIGHT, " ?");
+    watch_display_text(WATCH_POSITION_TOP_RIGHT, "  ");
 
     if (state->showing_reason && result.no_tachnun) {
         watch_display_text(WATCH_POSITION_BOTTOM, result.reason);
     } else {
-        watch_display_text(WATCH_POSITION_BOTTOM, result.no_tachnun ? " no   " : " YES  ");
+        watch_display_text(WATCH_POSITION_BOTTOM, result.no_tachnun ? " NO   " : " YES  ");
     }
 }
 

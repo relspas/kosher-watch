@@ -26,6 +26,8 @@
 #include <string.h>
 #include "tachnun_face.h"
 #include "hebrew_date_face.h"
+#include "location_settings.h"
+#include "sunriset.h"
 
 typedef struct {
     bool no_tachnun;
@@ -55,6 +57,43 @@ static hebrew_date_t _tachnun_next_day(hebrew_date_t date) {
 
 static bool _tachnun_is_rosh_chodesh(hebrew_date_t date) {
     return date.day == 1 || date.day == 30;
+}
+
+static int16_t _tachnun_local_minute_from_hours(double hours) {
+    int16_t minutes = (int16_t)(hours * 60.0 + 0.5);
+
+    while (minutes < 0) minutes += 1440;
+    while (minutes >= 1440) minutes -= 1440;
+
+    return minutes;
+}
+
+static bool _tachnun_after_mincha_gedolah(void) {
+    watch_date_time_t date_time = movement_get_local_date_time();
+    movement_location_t movement_location = location_settings_load_location();
+    int16_t current_minute;
+    int16_t mincha_gedolah_minute;
+    double lat, lon, hours_from_utc, sunrise, sunset, gra_day;
+    uint16_t year;
+
+    if (movement_location.reg == 0) return false;
+
+    lat = (double)((int16_t)movement_location.bit.latitude) / 100.0;
+    lon = (double)((int16_t)movement_location.bit.longitude) / 100.0;
+    hours_from_utc = ((double)movement_get_timezone_offset_for_date(date_time)) / 3600.0;
+    year = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
+
+    if (sun_rise_set(year, date_time.unit.month, date_time.unit.day, lon, lat, &sunrise, &sunset) != 0) return false;
+
+    sunrise += hours_from_utc;
+    sunset += hours_from_utc;
+    gra_day = sunset - sunrise;
+    if (gra_day < 0) gra_day += 24.0;
+
+    current_minute = date_time.unit.hour * 60 + date_time.unit.minute;
+    mincha_gedolah_minute = _tachnun_local_minute_from_hours(sunrise + gra_day / 2.0 + gra_day / 24.0);
+
+    return current_minute >= mincha_gedolah_minute;
 }
 
 static bool _tachnun_is_yom_haatzmaut(hebrew_date_t date) {
@@ -178,7 +217,7 @@ static tachnun_result_t _tachnun_no_tachnun(hebrew_date_t date, bool recurse) {
 
     if (!result.no_tachnun && recurse) {
         tachnun_result_t tomorrow = _tachnun_no_tachnun(_tachnun_next_day(date), false);
-        if (tomorrow.no_tachnun && tomorrow.day_before) {
+        if (tomorrow.no_tachnun && tomorrow.day_before && _tachnun_after_mincha_gedolah()) {
             result = (tachnun_result_t){ true, false, "MINCHA" };
         }
     }

@@ -183,6 +183,7 @@ static void hebrew_date_update_display(hebrew_date_state_t *state) {
     hebrew_date_t hebrew_date;
     char day[3];
     char bottom[7];
+    const char *month_name;
 
     if (!hebrew_date_get_display_date(date_time, &gregorian_year, &gregorian_month, &gregorian_day, &after_sunset_before_alot)) {
         watch_clear_indicator(WATCH_INDICATOR_PM);
@@ -198,10 +199,10 @@ static void hebrew_date_update_display(hebrew_date_state_t *state) {
     day[1] = '0' + (hebrew_date.day % 10);
     day[2] = '\0';
     if (state->show_year) {
-        snprintf(bottom, sizeof(bottom), "  %4u", hebrew_date.year);
+        snprintf(bottom, sizeof(bottom), "%6u", hebrew_date.year);
     } else {
-        snprintf(bottom, sizeof(bottom), "%s",
-                 hebrew_date_is_leap_year(hebrew_date.year) ? months_leap[hebrew_date.month] : months_regular[hebrew_date.month]);
+        month_name = hebrew_date_is_leap_year(hebrew_date.year) ? months_leap[hebrew_date.month] : months_regular[hebrew_date.month];
+        memcpy(bottom, month_name, sizeof(bottom));
     }
     watch_display_text(WATCH_POSITION_TOP_LEFT, "HE");
     watch_display_text(WATCH_POSITION_TOP_RIGHT, day);
@@ -231,6 +232,19 @@ bool hebrew_date_face_loop(movement_event_t event, void *context) {
     hebrew_date_state_t *state = (hebrew_date_state_t *)context;
     bool location_settings_finished = false;
 
+    if (location_settings_is_active(&state->location_settings) && state->suppress_alarm_hold_in_location_settings) {
+        switch (event.event_type) {
+            case EVENT_ALARM_LONG_UP:
+                state->suppress_alarm_hold_in_location_settings = false;
+                return true;
+            case EVENT_ALARM_LONG_PRESS:
+            case EVENT_ALARM_REALLY_LONG_PRESS:
+                return true;
+            default:
+                break;
+        }
+    }
+
     if (location_settings_handle_event(&state->location_settings, event, &location_settings_finished)) {
         if (location_settings_finished) hebrew_date_update_display(state);
         return true;
@@ -251,12 +265,14 @@ bool hebrew_date_face_loop(movement_event_t event, void *context) {
             break;
         case EVENT_ALARM_LONG_PRESS:
             location_settings_begin(&state->location_settings, event);
+            state->suppress_alarm_hold_in_location_settings = true;
             break;
         case EVENT_ALARM_REALLY_LONG_PRESS:
             break;
-        case EVENT_ALARM_BUTTON_UP:
         case EVENT_ALARM_LONG_UP:
-            state->show_year = false;
+            break;
+        case EVENT_ALARM_BUTTON_UP:
+            state->show_year = !state->show_year;
             hebrew_date_update_display(state);
             break;
         case EVENT_TIMEOUT:

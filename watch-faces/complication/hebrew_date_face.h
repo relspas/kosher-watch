@@ -36,6 +36,7 @@ typedef struct {
 
 typedef struct {
     bool show_year;
+    bool suppress_alarm_hold_in_location_settings;
     location_settings_state_t location_settings;
 } hebrew_date_state_t;
 

@@ -133,7 +133,7 @@ static bool _zmanim_compute(zmanim_state_t *state, zmanim_entry_t *zmanim) {
     zmanim[1].minute = _zmanim_local_minute_from_hours(talis);
     memcpy(zmanim[2].label, " NEtZ ", 7);
     zmanim[2].minute = _zmanim_local_minute_from_hours(sunrise);
-    memcpy(zmanim[3].label, "MA SHM", 7);
+    memcpy(zmanim[3].label, "MG SHM", 7);
     zmanim[3].minute = _zmanim_local_minute_from_hours(dawn + magen_avraham_day / 4.0);
     memcpy(zmanim[4].label, "GRA SH", 7);
     zmanim[4].minute = _zmanim_local_minute_from_hours(sunrise + gra_day / 4.0);
@@ -141,7 +141,7 @@ static bool _zmanim_compute(zmanim_state_t *state, zmanim_entry_t *zmanim) {
     zmanim[5].minute = _zmanim_local_minute_from_hours(sunrise + gra_day / 3.0);
     memcpy(zmanim[6].label, "Chatzo", 7);
     zmanim[6].minute = _zmanim_local_minute_from_hours(sunrise + gra_day / 2.0);
-    memcpy(zmanim[7].label, "MInCHA", 7);
+    memcpy(zmanim[7].label, "M Gedol", 7);
     zmanim[7].minute = _zmanim_local_minute_from_hours(sunrise + gra_day / 2.0 + gra_day / 24.0);
     memcpy(zmanim[8].label, " PlAG ", 7);
     zmanim[8].minute = _zmanim_local_minute_from_hours(sunset - gra_day * 1.25 / 12.0);

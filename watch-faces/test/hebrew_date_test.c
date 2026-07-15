@@ -23,6 +23,7 @@ static int failures = 0;
 static watch_date_time_t fake_now;
 static movement_location_t fake_location;
 static bool fake_pm_indicator;
+static uint8_t location_begin_calls;
 static char displayed_top_left[8];
 static char displayed_top_right[8];
 static char displayed_bottom[8];
@@ -103,6 +104,49 @@ bool filesystem_write_file(char *filename, char *buf, int32_t length) {
     return true;
 }
 
+movement_location_t location_settings_load_location(void) {
+    return fake_location;
+}
+
+void location_settings_load_working_location(location_settings_state_t *state) {
+    (void)state;
+}
+
+void location_settings_persist_if_changed(location_settings_state_t *state) {
+    (void)state;
+}
+
+bool location_settings_is_active(location_settings_state_t *state) {
+    return state->page != 0;
+}
+
+void location_settings_begin(location_settings_state_t *state, movement_event_t event) {
+    (void)event;
+    state->page = 1;
+    state->active_digit = 0;
+    location_begin_calls++;
+}
+
+bool location_settings_handle_event(location_settings_state_t *state, movement_event_t event, bool *finished) {
+    *finished = false;
+
+    if (!location_settings_is_active(state)) return false;
+
+    switch (event.event_type) {
+        case EVENT_TICK:
+        case EVENT_LOW_ENERGY_UPDATE:
+        case EVENT_ALARM_BUTTON_UP:
+            return true;
+        case EVENT_ALARM_LONG_PRESS:
+        case EVENT_TIMEOUT:
+            state->page = 0;
+            *finished = true;
+            return true;
+        default:
+            return false;
+    }
+}
+
 void movement_request_tick_frequency(uint8_t freq) {
     (void)freq;
 }
@@ -170,6 +214,7 @@ static void reset_face_test_state(uint16_t year, uint8_t month, uint8_t day, uin
     }
 
     fake_pm_indicator = false;
+    location_begin_calls = 0;
     memset(displayed_top_left, 0, sizeof(displayed_top_left));
     memset(displayed_top_right, 0, sizeof(displayed_top_right));
     memset(displayed_bottom, 0, sizeof(displayed_bottom));
@@ -347,6 +392,57 @@ static void test_face_pm_indicator_stays_on_until_alot(void) {
     ASSERT_FALSE(fake_pm_indicator);
 }
 
+static void test_alarm_button_toggles_hebrew_year(void) {
+    hebrew_date_state_t state = {0};
+
+    reset_face_test_state(2024, 10, 2, 12, 0, true);
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ACTIVATE }, &state);
+
+    ASSERT_EQ_STR("Elul  ", displayed_bottom);
+
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_BUTTON_UP }, &state);
+    ASSERT_TRUE(state.show_year);
+    ASSERT_EQ_STR("  5784", displayed_bottom);
+
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_BUTTON_UP }, &state);
+    ASSERT_FALSE(state.show_year);
+    ASSERT_EQ_STR("Elul  ", displayed_bottom);
+}
+
+static void test_alarm_long_press_still_opens_location_settings(void) {
+    hebrew_date_state_t state = {0};
+
+    reset_face_test_state(2024, 10, 2, 12, 0, true);
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ACTIVATE }, &state);
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_LONG_PRESS }, &state);
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_LONG_UP }, &state);
+
+    ASSERT_EQ_INT(1, location_begin_calls);
+    ASSERT_FALSE(state.show_year);
+}
+
+static void test_opening_alarm_hold_does_not_close_location_settings(void) {
+    hebrew_date_state_t state = {0};
+
+    reset_face_test_state(2024, 10, 2, 12, 0, false);
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ACTIVATE }, &state);
+
+    ASSERT_EQ_STR("No LOC", displayed_bottom);
+
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_LONG_PRESS }, &state);
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_LONG_PRESS }, &state);
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_REALLY_LONG_PRESS }, &state);
+
+    ASSERT_EQ_INT(1, location_begin_calls);
+    ASSERT_TRUE(location_settings_is_active(&state.location_settings));
+    ASSERT_EQ_STR("No LOC", displayed_bottom);
+
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_LONG_UP }, &state);
+    hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_LONG_PRESS }, &state);
+
+    ASSERT_FALSE(location_settings_is_active(&state.location_settings));
+}
+
 int main(void) {
     test_hebrew_date_is_leap_year();
     test_leap_years_vs_non_leap_years();
@@ -361,6 +457,9 @@ int main(void) {
     test_face_uses_civil_date_before_sunset();
     test_face_advances_hebrew_date_after_sunset();
     test_face_pm_indicator_stays_on_until_alot();
+    test_alarm_button_toggles_hebrew_year();
+    test_alarm_long_press_still_opens_location_settings();
+    test_opening_alarm_hold_does_not_close_location_settings();
 
     if (failures) {
         printf("%d Hebrew date test failure%s\n", failures, failures == 1 ? "" : "s");

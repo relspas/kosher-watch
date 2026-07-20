@@ -36,10 +36,50 @@
  * register as the Sunrise/Sunset face.
  */
 
+#define ZMANIM_BASE_COUNT 12
+#define ZMANIM_DISPLAY_COUNT_MAX (ZMANIM_BASE_COUNT * 2 + 4)
+#define ZMANIM_DISPLAY_FIELD_LENGTH 7
+
+#define ZMANIM_FACE_LABEL "ZM"
+#define ZMANIM_TOP_RIGHT_BLANK "  "
+#define ZMANIM_NO_LOCATION "No Loc"
+#define ZMANIM_LOCATION_DEFAULT_NAME "  "
+
+#define ZMANIM_LABEL_ALOT " AlOt "
+#define ZMANIM_LABEL_TALIS " TALIS"
+#define ZMANIM_LABEL_NETZ " NEtZ "
+#define ZMANIM_LABEL_MAGEN_AVRAHAM_SHEMA "MG SHM"
+#define ZMANIM_LABEL_GRA_SHEMA "GRA SH"
+#define ZMANIM_LABEL_SHACHARIT "SHACH "
+#define ZMANIM_LABEL_CHATZOT "Chatzo"
+#define ZMANIM_LABEL_MINCHA_GEDOLAH "m Gedo"
+#define ZMANIM_LABEL_PLAG " PlAG "
+#define ZMANIM_LABEL_SHKIA " SHKIA"
+#define ZMANIM_LABEL_THREE_STARS "3STAR "
+#define ZMANIM_LABEL_SEVENTY_TWO_MINUTES " 72MIn"
+#define ZMANIM_LABEL_BEGIN_FAST "BEGFAS"
+#define ZMANIM_LABEL_END_FAST "ENdFAS"
+#define ZMANIM_LABEL_CANDLE "Candle"
+
+extern const char zmanim_base_labels[ZMANIM_BASE_COUNT][ZMANIM_DISPLAY_FIELD_LENGTH];
+
+typedef struct {
+    char label[ZMANIM_DISPLAY_FIELD_LENGTH];
+    int16_t minute;
+    bool is_time;
+} zmanim_entry_t;
+
 typedef struct {
     uint8_t zman_index;
     bool showing_time;
     uint8_t longLatToUse;
+    bool cache_valid;
+    bool cached_has_location;
+    int32_t cache_created_at;
+    int32_t cache_expires_at;
+    uint32_t cache_location_reg;
+    uint8_t cached_zmanim_count;
+    zmanim_entry_t cached_zmanim[ZMANIM_DISPLAY_COUNT_MAX];
     location_settings_state_t location_settings;
 } zmanim_state_t;
 
@@ -64,7 +104,7 @@ typedef struct {
 
 static const zmanim_long_lat_presets_t zmanimLongLatPresets[] =
 {
-    { .name = "  "},  // Default: use the shared location register.
+    { .name = ZMANIM_LOCATION_DEFAULT_NAME },  // Default: use the shared location register.
 //    { .name = "Ny", .latitude = 4072, .longitude = -7401 },  // New York City, NY
 //    { .name = "LA", .latitude = 3405, .longitude = -11824 },  // Los Angeles, CA
 //    { .name = "dE", .latitude = 4221, .longitude = -8305 },  // Detroit, MI

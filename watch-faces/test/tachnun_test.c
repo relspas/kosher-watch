@@ -35,6 +35,7 @@ void location_settings_begin(location_settings_state_t *state, movement_event_t 
 bool location_settings_handle_event(location_settings_state_t *state, movement_event_t event, bool *finished);
 
 #include "../complication/hebrew_date_face.c"
+#include "../complication/jewish_calendar_utils.c"
 #include "../complication/tachnun_face.c"
 
 static int failures = 0;
@@ -182,20 +183,20 @@ static void update_tachnun_display(bool showing_reason) {
 static void test_day_before_no_tachnun_starts_at_mincha_gedolah(void) {
     reset_face_test_state(2025, 2, 12, 12, 29, true);
     update_tachnun_display(false);
-    ASSERT_EQ_STR(" YES  ", displayed_bottom);
+    ASSERT_EQ_STR(TACHNUN_STATUS_YES, displayed_bottom);
 
     reset_face_test_state(2025, 2, 12, 12, 30, true);
     update_tachnun_display(false);
-    ASSERT_EQ_STR(" NO   ", displayed_bottom);
+    ASSERT_EQ_STR(TACHNUN_STATUS_NO, displayed_bottom);
 
     update_tachnun_display(true);
-    ASSERT_EQ_STR("MINCHA", displayed_bottom);
+    ASSERT_EQ_STR(TACHNUN_REASON_MINCHA, displayed_bottom);
 }
 
 static void test_day_before_no_tachnun_requires_location_for_mincha_time(void) {
     reset_face_test_state(2025, 2, 12, 13, 0, false);
     update_tachnun_display(false);
-    ASSERT_EQ_STR(" YES  ", displayed_bottom);
+    ASSERT_EQ_STR(TACHNUN_STATUS_YES, displayed_bottom);
 }
 
 int main(void) {

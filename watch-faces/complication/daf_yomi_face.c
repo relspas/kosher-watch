@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "daf_yomi_face.h"
+#include "jewish_calendar_utils.h"
 #include "watch_rtc.h"
 
 #define DAF_YOMI_START_YEAR 1923
@@ -35,7 +36,6 @@
 #define DAF_YOMI_SHEKALIM_CHANGE_DAY 24
 #define DAF_YOMI_OLD_CYCLE_DAYS 2702
 #define DAF_YOMI_CYCLE_DAYS 2711
-#define DAF_YOMI_MASECHTOT 40
 
 static void daf_yomi_update_display(daf_yomi_state_t *state);
 
@@ -53,12 +53,7 @@ void daf_yomi_face_activate(void *context) {
     daf_yomi_update_display((daf_yomi_state_t *)context);
 }
 
-typedef struct {
-    char text[7];   // 4 characters + terminating '\0'
-    bool special;
-} daf_pair_t;
-
-static const daf_pair_t pairs[] = {
+const daf_yomi_pair_t daf_yomi_pairs[DAF_YOMI_MASECHTOT] = {
     { "BrAC", false },
     { "Shab", false },
     { "Eruv", false },
@@ -107,26 +102,14 @@ static const uint8_t daf_yomi_daf_counts[DAF_YOMI_MASECHTOT] = {
     61, 34, 34, 28, 22, 4, 9, 5, 73
 };
 
-static int32_t daf_yomi_fixed_from_gregorian(uint16_t year, uint8_t month, uint8_t day) {
-    uint16_t prior_year = year - 1;
-    int32_t fixed = 365L * prior_year + prior_year / 4 - prior_year / 100 + prior_year / 400;
-
-    fixed += (367 * month - 362) / 12 + day;
-    if (month > 2) {
-        bool leap_year = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
-        fixed += leap_year ? -1 : -2;
-    }
-    return fixed;
-}
-
 static bool daf_yomi_get_today(daf_yomi_state_t *state) {
     watch_date_time_t date_time = movement_get_local_date_time();
     uint16_t year = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
-    int32_t today = daf_yomi_fixed_from_gregorian(year, date_time.unit.month, date_time.unit.day);
-    int32_t start = daf_yomi_fixed_from_gregorian(DAF_YOMI_START_YEAR, DAF_YOMI_START_MONTH, DAF_YOMI_START_DAY);
-    int32_t shekalim_change = daf_yomi_fixed_from_gregorian(DAF_YOMI_SHEKALIM_CHANGE_YEAR,
-                                                             DAF_YOMI_SHEKALIM_CHANGE_MONTH,
-                                                             DAF_YOMI_SHEKALIM_CHANGE_DAY);
+    int32_t today = hebrew_date_fixed_from_gregorian(year, date_time.unit.month, date_time.unit.day);
+    int32_t start = hebrew_date_fixed_from_gregorian(DAF_YOMI_START_YEAR, DAF_YOMI_START_MONTH, DAF_YOMI_START_DAY);
+    int32_t shekalim_change = hebrew_date_fixed_from_gregorian(DAF_YOMI_SHEKALIM_CHANGE_YEAR,
+                                                               DAF_YOMI_SHEKALIM_CHANGE_MONTH,
+                                                               DAF_YOMI_SHEKALIM_CHANGE_DAY);
     uint8_t counts[DAF_YOMI_MASECHTOT];
     int32_t day_in_cycle;
 
@@ -154,34 +137,55 @@ static bool daf_yomi_get_today(daf_yomi_state_t *state) {
     return false;
 }
 
+static bool daf_yomi_cache_is_current(daf_yomi_state_t *state, watch_date_time_t date_time) {
+    int32_t now = jewish_calendar_fixed_minute_from_date_time(date_time);
+
+    return state->cache_valid &&
+           now >= state->cache_created_at &&
+           now < state->cache_expires_at;
+}
+
+static void daf_yomi_update_cache(daf_yomi_state_t *state, watch_date_time_t date_time) {
+    state->cache_valid = true;
+    state->cache_created_at = jewish_calendar_fixed_minute_from_date_time(date_time);
+    state->cache_expires_at = jewish_calendar_next_local_midnight(date_time);
+    state->cached_has_daf = daf_yomi_get_today(state);
+}
+
 static void _display_mesechet_daf(daf_yomi_state_t *state){
     char buf[11];
     uint8_t daf = state->daf;
-    if (!pairs[state->mesechet].special){
-        watch_display_text(WATCH_POSITION_TOP_LEFT, "DF");
-        sprintf(buf,"%.4s%2d", pairs[state->mesechet].text, daf % 100);
+    if (!daf_yomi_pairs[state->mesechet].special){
+        watch_display_text(WATCH_POSITION_TOP_LEFT, DAF_YOMI_FACE_LABEL);
+        sprintf(buf,"%.4s%2d", daf_yomi_pairs[state->mesechet].text, daf % 100);
         watch_display_text(WATCH_POSITION_BOTTOM, buf);
     }else{
-        sprintf(buf,"%c%c%c%c%2d", pairs[state->mesechet].text[2],
-            pairs[state->mesechet].text[3],pairs[state->mesechet].text[4],
-            pairs[state->mesechet].text[5], daf % 100);
+        sprintf(buf,"%c%c%c%c%2d", daf_yomi_pairs[state->mesechet].text[2],
+            daf_yomi_pairs[state->mesechet].text[3],daf_yomi_pairs[state->mesechet].text[4],
+            daf_yomi_pairs[state->mesechet].text[5], daf % 100);
         watch_display_text(WATCH_POSITION_BOTTOM, buf);
-        sprintf(buf,"%.2s",pairs[state->mesechet].text);
+        sprintf(buf,"%.2s",daf_yomi_pairs[state->mesechet].text);
         watch_display_text(WATCH_POSITION_TOP_LEFT, buf);
     }
     if (daf / 100 > 0)
-        watch_display_text(WATCH_POSITION_TOP_RIGHT, " 1");
+        watch_display_text(WATCH_POSITION_TOP_RIGHT, DAF_YOMI_TOP_RIGHT_HUNDREDS);
     else
-        watch_display_text(WATCH_POSITION_TOP_RIGHT, "  ");
+        watch_display_text(WATCH_POSITION_TOP_RIGHT, DAF_YOMI_TOP_RIGHT_BLANK);
 }
 
 static void daf_yomi_update_display(daf_yomi_state_t *state) {
-    if (daf_yomi_get_today(state)) {
+    watch_date_time_t date_time = movement_get_local_date_time();
+
+    if (!daf_yomi_cache_is_current(state, date_time)) {
+        daf_yomi_update_cache(state, date_time);
+    }
+
+    if (state->cached_has_daf) {
         _display_mesechet_daf(state);
     } else {
-        watch_display_text(WATCH_POSITION_TOP_LEFT, "DF");
-        watch_display_text(WATCH_POSITION_TOP_RIGHT, "  ");
-        watch_display_text(WATCH_POSITION_BOTTOM, "------");
+        watch_display_text(WATCH_POSITION_TOP_LEFT, DAF_YOMI_FACE_LABEL);
+        watch_display_text(WATCH_POSITION_TOP_RIGHT, DAF_YOMI_TOP_RIGHT_BLANK);
+        watch_display_text(WATCH_POSITION_BOTTOM, DAF_YOMI_NO_DAF);
     }
 }
 

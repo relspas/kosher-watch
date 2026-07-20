@@ -26,13 +26,22 @@
 #include <string.h>
 #include <stdio.h>
 #include "hebrew_date_face.h"
+#include "jewish_calendar_utils.h"
 #include "watch_rtc.h"
 #include "location_settings.h"
-#include "sunriset.h"
 
 /* Fixed Hebrew calendar: 19-year Metonic cycle with the four postponement rules. */
 #define HEBREW_EPOCH -1373427L
-#define HEBREW_DATE_ALOT_DEGREES -16.1
+
+const char hebrew_date_months_regular[12][HEBREW_DATE_DISPLAY_FIELD_LENGTH] = {
+    "Tishre", "Cheshv", "Kislev", "Tevet ", "Shevat", "Adar  ",
+    "Nisan ", "Iyar  ", "Sivan ", " TAMUZ", " Av   ", "Elul  "
+};
+
+const char hebrew_date_months_leap[13][HEBREW_DATE_DISPLAY_FIELD_LENGTH] = {
+    "Tishre", "Cheshv", "Kislev", "Tevet ", "Shevat", "Adar 1", "Adar 2",
+    "Nisan ", "Iyar  ", "Sivan ", "TAMUZ", " Av   ", "Elul  "
+};
 
 bool hebrew_date_is_leap_year(uint16_t year) {
     uint8_t cycle_year = year % 19;
@@ -96,44 +105,8 @@ hebrew_date_t hebrew_date_from_gregorian(uint16_t year, uint8_t month, uint8_t d
     return hebrew_date;
 }
 
-static uint8_t hebrew_date_gregorian_month_length(uint16_t year, uint8_t month) {
-    static const uint8_t month_lengths[] = {
-        31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
-    };
-
-    if (month == 2 && year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)) return 29;
-
-    return month_lengths[month - 1];
-}
-
-static void hebrew_date_advance_gregorian_one_day(uint16_t *year, uint8_t *month, uint8_t *day) {
-    (*day)++;
-    if (*day <= hebrew_date_gregorian_month_length(*year, *month)) return;
-
-    *day = 1;
-    (*month)++;
-    if (*month <= 12) return;
-
-    *month = 1;
-    (*year)++;
-}
-
-static int16_t hebrew_date_local_minute_from_hours(double hours) {
-    int16_t minutes;
-
-    while (hours < 0) hours += 24.0;
-    while (hours >= 24.0) hours -= 24.0;
-
-    minutes = (int16_t)(hours * 60.0 + 0.5);
-
-    while (minutes >= 1440) minutes -= 1440;
-
-    return minutes;
-}
-
-static bool hebrew_date_get_display_date(watch_date_time_t date_time, uint16_t *year, uint8_t *month, uint8_t *day, bool *after_sunset_before_alot) {
-    movement_location_t movement_location = location_settings_load_location();
-    double lat, lon, hours_from_utc, sunrise, sunset, dawn, night_16_1;
+static bool hebrew_date_get_display_date(watch_date_time_t date_time, movement_location_t movement_location, uint16_t *year, uint8_t *month, uint8_t *day, bool *after_sunset_before_alot, int32_t *expires_at) {
+    double sunrise, sunset, dawn, night_16_1;
     int16_t current_minute;
     int16_t sunset_minute;
     int16_t dawn_minute;
@@ -144,70 +117,95 @@ static bool hebrew_date_get_display_date(watch_date_time_t date_time, uint16_t *
     *month = date_time.unit.month;
     *day = date_time.unit.day;
 
-    lat = (double)((int16_t)movement_location.bit.latitude) / 100.0;
-    lon = (double)((int16_t)movement_location.bit.longitude) / 100.0;
-    hours_from_utc = ((double)movement_get_timezone_offset_for_date(date_time)) / 3600.0;
-
-    if (sun_rise_set(*year, *month, *day, lon, lat, &sunrise, &sunset) != 0) return false;
-    if (__sunriset__(*year, *month, *day, lon, lat, HEBREW_DATE_ALOT_DEGREES, 0, &dawn, &night_16_1) != 0) return false;
-
-    sunset += hours_from_utc;
-    dawn += hours_from_utc;
+    if (!jewish_calendar_sunrise_sunset_for_date(date_time, movement_location, &sunrise, &sunset)) return false;
+    if (!jewish_calendar_solar_time_for_altitude(date_time, movement_location, JEWISH_CALENDAR_ALOT_DEGREES, 0, &dawn, &night_16_1)) return false;
 
     current_minute = date_time.unit.hour * 60 + date_time.unit.minute;
-    sunset_minute = hebrew_date_local_minute_from_hours(sunset);
-    dawn_minute = hebrew_date_local_minute_from_hours(dawn);
+    sunset_minute = jewish_calendar_local_minute_from_hours(sunset);
+    dawn_minute = jewish_calendar_local_minute_from_hours(dawn);
     *after_sunset_before_alot = current_minute >= sunset_minute || current_minute < dawn_minute;
 
-    if (current_minute >= sunset_minute) {
-        hebrew_date_advance_gregorian_one_day(year, month, day);
+    if (current_minute < dawn_minute) {
+        *expires_at = jewish_calendar_fixed_minute(*year, *month, *day, dawn_minute / 60, dawn_minute % 60);
+    } else if (current_minute >= sunset_minute) {
+        jewish_calendar_advance_gregorian_one_day(year, month, day);
+        date_time.unit.year = *year - WATCH_RTC_REFERENCE_YEAR;
+        date_time.unit.month = *month;
+        date_time.unit.day = *day;
+        if (!jewish_calendar_sunrise_sunset_for_date(date_time, movement_location, &sunrise, &sunset)) return false;
+        sunset_minute = jewish_calendar_local_minute_from_hours(sunset);
+        *expires_at = jewish_calendar_fixed_minute(*year, *month, *day, sunset_minute / 60, sunset_minute % 60);
+    } else {
+        *expires_at = jewish_calendar_fixed_minute(*year, *month, *day, sunset_minute / 60, sunset_minute % 60);
     }
 
     return true;
 }
 
-static void hebrew_date_update_display(hebrew_date_state_t *state) {
-    static const char *const months_regular[] = {
-        "Tishre", "Cheshv", "Kislev", "Tevet ", "Shevat", "Adar  ",
-        "Nisan ", "Iyar  ", "Sivan ", " TAMUZ", " Av   ", "Elul  "
-    };
-    static const char *const months_leap[] = {
-        "Tishre", "Cheshv", "Kislev", "Tevet ", "Shevat", "Adar 1", "Adar 2",
-        "Nisan ", "Iyar  ", "Sivan ", "TAMUZ", " Av   ", "Elul  "
-    };
-    watch_date_time_t date_time = movement_get_local_date_time();
+static bool hebrew_date_cache_is_current(hebrew_date_state_t *state, watch_date_time_t date_time, movement_location_t movement_location) {
+    int32_t now = jewish_calendar_fixed_minute_from_date_time(date_time);
+
+    return state->cache_valid &&
+           state->cache_location_reg == movement_location.reg &&
+           now >= state->cache_created_at &&
+           now < state->cache_expires_at;
+}
+
+static void hebrew_date_update_cache(hebrew_date_state_t *state, watch_date_time_t date_time, movement_location_t movement_location) {
     uint16_t gregorian_year;
     uint8_t gregorian_month;
     uint8_t gregorian_day;
+    int32_t expires_at;
     bool after_sunset_before_alot = false;
-    hebrew_date_t hebrew_date;
-    char day[3];
-    char bottom[7];
-    const char *month_name;
 
-    if (!hebrew_date_get_display_date(date_time, &gregorian_year, &gregorian_month, &gregorian_day, &after_sunset_before_alot)) {
-        watch_clear_indicator(WATCH_INDICATOR_PM);
-        watch_display_text(WATCH_POSITION_TOP_LEFT, "HE");
-        watch_display_text(WATCH_POSITION_TOP_RIGHT, "  ");
-        watch_display_text(WATCH_POSITION_BOTTOM, "No LOC");
+    state->cache_valid = true;
+    state->cache_created_at = jewish_calendar_fixed_minute_from_date_time(date_time);
+    state->cache_location_reg = movement_location.reg;
+
+    if (!hebrew_date_get_display_date(date_time, movement_location, &gregorian_year, &gregorian_month, &gregorian_day, &after_sunset_before_alot, &expires_at)) {
+        state->cached_has_location = false;
+        state->cache_expires_at = state->cache_created_at + 60;
         return;
     }
 
-    hebrew_date = hebrew_date_from_gregorian(gregorian_year, gregorian_month, gregorian_day);
+    state->cached_has_location = true;
+    state->cached_after_sunset_before_alot = after_sunset_before_alot;
+    state->cached_date = hebrew_date_from_gregorian(gregorian_year, gregorian_month, gregorian_day);
+    state->cache_expires_at = expires_at;
+}
 
-    day[0] = hebrew_date.day < 10 ? ' ' : '0' + (hebrew_date.day / 10);
-    day[1] = '0' + (hebrew_date.day % 10);
+static void hebrew_date_update_display(hebrew_date_state_t *state) {
+    watch_date_time_t date_time = movement_get_local_date_time();
+    movement_location_t movement_location = location_settings_load_location();
+    char day[3];
+    char bottom[HEBREW_DATE_DISPLAY_FIELD_LENGTH];
+    const char *month_name;
+
+    if (!hebrew_date_cache_is_current(state, date_time, movement_location)) {
+        hebrew_date_update_cache(state, date_time, movement_location);
+    }
+
+    if (!state->cached_has_location) {
+        watch_clear_indicator(WATCH_INDICATOR_PM);
+        watch_display_text(WATCH_POSITION_TOP_LEFT, HEBREW_DATE_FACE_LABEL);
+        watch_display_text(WATCH_POSITION_TOP_RIGHT, HEBREW_DATE_TOP_RIGHT_BLANK);
+        watch_display_text(WATCH_POSITION_BOTTOM, HEBREW_DATE_NO_LOCATION);
+        return;
+    }
+
+    day[0] = state->cached_date.day < 10 ? ' ' : '0' + (state->cached_date.day / 10);
+    day[1] = '0' + (state->cached_date.day % 10);
     day[2] = '\0';
     if (state->show_year) {
-        snprintf(bottom, sizeof(bottom), "%6u", hebrew_date.year);
+        snprintf(bottom, sizeof(bottom), "%6u", state->cached_date.year);
     } else {
-        month_name = hebrew_date_is_leap_year(hebrew_date.year) ? months_leap[hebrew_date.month] : months_regular[hebrew_date.month];
+        month_name = hebrew_date_is_leap_year(state->cached_date.year) ? hebrew_date_months_leap[state->cached_date.month] : hebrew_date_months_regular[state->cached_date.month];
         memcpy(bottom, month_name, sizeof(bottom));
     }
-    watch_display_text(WATCH_POSITION_TOP_LEFT, "HE");
+    watch_display_text(WATCH_POSITION_TOP_LEFT, HEBREW_DATE_FACE_LABEL);
     watch_display_text(WATCH_POSITION_TOP_RIGHT, day);
     watch_display_text(WATCH_POSITION_BOTTOM, bottom);
-    if (after_sunset_before_alot) watch_set_indicator(WATCH_INDICATOR_PM);
+    if (state->cached_after_sunset_before_alot) watch_set_indicator(WATCH_INDICATOR_PM);
     else watch_clear_indicator(WATCH_INDICATOR_PM);
 }
 
@@ -232,21 +230,11 @@ bool hebrew_date_face_loop(movement_event_t event, void *context) {
     hebrew_date_state_t *state = (hebrew_date_state_t *)context;
     bool location_settings_finished = false;
 
-    if (location_settings_is_active(&state->location_settings) && state->suppress_alarm_hold_in_location_settings) {
-        switch (event.event_type) {
-            case EVENT_ALARM_LONG_UP:
-                state->suppress_alarm_hold_in_location_settings = false;
-                return true;
-            case EVENT_ALARM_LONG_PRESS:
-            case EVENT_ALARM_REALLY_LONG_PRESS:
-                return true;
-            default:
-                break;
-        }
-    }
-
     if (location_settings_handle_event(&state->location_settings, event, &location_settings_finished)) {
-        if (location_settings_finished) hebrew_date_update_display(state);
+        if (location_settings_finished) {
+            state->cache_valid = false;
+            hebrew_date_update_display(state);
+        }
         return true;
     }
 

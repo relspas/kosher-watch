@@ -26,6 +26,13 @@
 
 #include "movement.h"
 
+#define DAF_YOMI_FACE_LABEL "DF"
+#define DAF_YOMI_TOP_RIGHT_HUNDREDS " 1"
+#define DAF_YOMI_TOP_RIGHT_BLANK "  "
+#define DAF_YOMI_NO_DAF "------"
+#define DAF_YOMI_MASECHTOT 40
+#define DAF_YOMI_DISPLAY_FIELD_LENGTH 7
+
 /*
  * A DESCRIPTION OF YOUR WATCH FACE
  *
@@ -34,8 +41,19 @@
  */
 
 typedef struct {
+    char text[DAF_YOMI_DISPLAY_FIELD_LENGTH];
+    bool special;
+} daf_yomi_pair_t;
+
+extern const daf_yomi_pair_t daf_yomi_pairs[DAF_YOMI_MASECHTOT];
+
+typedef struct {
     uint8_t daf;
     uint8_t mesechet;
+    bool cache_valid;
+    bool cached_has_daf;
+    int32_t cache_created_at;
+    int32_t cache_expires_at;
 } daf_yomi_state_t;
 
 void daf_yomi_face_setup(uint8_t watch_face_index, void ** context_ptr);

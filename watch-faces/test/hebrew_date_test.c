@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include "../complication/hebrew_date_face.c"
+#include "../complication/jewish_calendar_utils.c"
 
 static int failures = 0;
 static watch_date_time_t fake_now;
@@ -350,9 +351,9 @@ static void test_face_says_no_location_without_shared_lat_lon(void) {
     reset_face_test_state(2024, 10, 2, 12, 0, false);
     hebrew_date_update_display(&state);
 
-    ASSERT_EQ_STR("HE", displayed_top_left);
-    ASSERT_EQ_STR("  ", displayed_top_right);
-    ASSERT_EQ_STR("No LOC", displayed_bottom);
+    ASSERT_EQ_STR(HEBREW_DATE_FACE_LABEL, displayed_top_left);
+    ASSERT_EQ_STR(HEBREW_DATE_TOP_RIGHT_BLANK, displayed_top_right);
+    ASSERT_EQ_STR(HEBREW_DATE_NO_LOCATION, displayed_bottom);
     ASSERT_FALSE(fake_pm_indicator);
 }
 
@@ -398,7 +399,7 @@ static void test_alarm_button_toggles_hebrew_year(void) {
     reset_face_test_state(2024, 10, 2, 12, 0, true);
     hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ACTIVATE }, &state);
 
-    ASSERT_EQ_STR("Elul  ", displayed_bottom);
+    ASSERT_EQ_STR(hebrew_date_months_regular[11], displayed_bottom);
 
     hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_BUTTON_UP }, &state);
     ASSERT_TRUE(state.show_year);
@@ -406,7 +407,7 @@ static void test_alarm_button_toggles_hebrew_year(void) {
 
     hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_BUTTON_UP }, &state);
     ASSERT_FALSE(state.show_year);
-    ASSERT_EQ_STR("Elul  ", displayed_bottom);
+    ASSERT_EQ_STR(hebrew_date_months_regular[11], displayed_bottom);
 }
 
 static void test_alarm_long_press_still_opens_location_settings(void) {
@@ -427,7 +428,7 @@ static void test_opening_alarm_hold_does_not_close_location_settings(void) {
     reset_face_test_state(2024, 10, 2, 12, 0, false);
     hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ACTIVATE }, &state);
 
-    ASSERT_EQ_STR("No LOC", displayed_bottom);
+    ASSERT_EQ_STR(HEBREW_DATE_NO_LOCATION, displayed_bottom);
 
     hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_LONG_PRESS }, &state);
     hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_LONG_PRESS }, &state);
@@ -435,7 +436,7 @@ static void test_opening_alarm_hold_does_not_close_location_settings(void) {
 
     ASSERT_EQ_INT(1, location_begin_calls);
     ASSERT_TRUE(location_settings_is_active(&state.location_settings));
-    ASSERT_EQ_STR("No LOC", displayed_bottom);
+    ASSERT_EQ_STR(HEBREW_DATE_NO_LOCATION, displayed_bottom);
 
     hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_LONG_UP }, &state);
     hebrew_date_face_loop((movement_event_t){ .event_type = EVENT_ALARM_LONG_PRESS }, &state);

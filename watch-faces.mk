@@ -62,6 +62,7 @@ SRCS += \
   ./watch-faces/complication/doomsday_face.c \
   ./watch-faces/complication/book_face.c \
   ./watch-faces/complication/location_settings.c \
+  ./watch-faces/complication/jewish_calendar_utils.c \
   ./watch-faces/complication/hebrew_date_face.c \
   ./watch-faces/complication/zmanim_face.c \
   ./watch-faces/complication/tachnun_face.c \

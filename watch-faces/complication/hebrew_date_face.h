@@ -27,6 +27,11 @@
 #include "movement.h"
 #include "location_settings.h"
 
+#define HEBREW_DATE_FACE_LABEL "HE"
+#define HEBREW_DATE_TOP_RIGHT_BLANK "  "
+#define HEBREW_DATE_NO_LOCATION "No LOC"
+#define HEBREW_DATE_DISPLAY_FIELD_LENGTH 7
+
 typedef struct {
     uint16_t year;
     uint8_t month; // 0=Tishrei, 1=Cheshvan ... Adar/Nisan positions follow year type.
@@ -34,9 +39,19 @@ typedef struct {
     uint8_t weekday; // 1=Sunday ... 7=Shabbat.
 } hebrew_date_t;
 
+extern const char hebrew_date_months_regular[12][HEBREW_DATE_DISPLAY_FIELD_LENGTH];
+extern const char hebrew_date_months_leap[13][HEBREW_DATE_DISPLAY_FIELD_LENGTH];
+
 typedef struct {
     bool show_year;
     bool suppress_alarm_hold_in_location_settings;
+    bool cache_valid;
+    bool cached_has_location;
+    bool cached_after_sunset_before_alot;
+    int32_t cache_created_at;
+    int32_t cache_expires_at;
+    uint32_t cache_location_reg;
+    hebrew_date_t cached_date;
     location_settings_state_t location_settings;
 } hebrew_date_state_t;
 

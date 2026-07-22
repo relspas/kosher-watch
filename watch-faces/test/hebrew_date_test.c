@@ -393,6 +393,25 @@ static void test_face_pm_indicator_stays_on_until_alot(void) {
     ASSERT_FALSE(fake_pm_indicator);
 }
 
+static void test_face_after_sunset_cache_expires_at_next_alot(void) {
+    hebrew_date_state_t state = {0};
+
+    reset_face_test_state(2024, 10, 2, 18, 0, true);
+    hebrew_date_update_display(&state);
+
+    ASSERT_EQ_STR(" 1", displayed_top_right);
+    ASSERT_TRUE(fake_pm_indicator);
+    ASSERT_EQ_INT(jewish_calendar_fixed_minute(2024, 10, 3, 5, 0), state.cache_alot_at);
+    ASSERT_EQ_INT(state.cache_alot_at, state.cache_expires_at);
+
+    reset_face_test_state(2024, 10, 3, 12, 0, true);
+    hebrew_date_update_display(&state);
+
+    ASSERT_EQ_STR(" 1", displayed_top_right);
+    ASSERT_FALSE(fake_pm_indicator);
+    ASSERT_EQ_INT(0, state.cache_alot_at);
+}
+
 static void test_alarm_button_toggles_hebrew_year(void) {
     hebrew_date_state_t state = {0};
 
@@ -458,6 +477,7 @@ int main(void) {
     test_face_uses_civil_date_before_sunset();
     test_face_advances_hebrew_date_after_sunset();
     test_face_pm_indicator_stays_on_until_alot();
+    test_face_after_sunset_cache_expires_at_next_alot();
     test_alarm_button_toggles_hebrew_year();
     test_alarm_long_press_still_opens_location_settings();
     test_opening_alarm_hold_does_not_close_location_settings();

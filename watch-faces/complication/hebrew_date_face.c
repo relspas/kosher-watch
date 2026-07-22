@@ -132,9 +132,10 @@ static bool hebrew_date_get_display_date(watch_date_time_t date_time, movement_l
         date_time.unit.year = *year - WATCH_RTC_REFERENCE_YEAR;
         date_time.unit.month = *month;
         date_time.unit.day = *day;
-        if (!jewish_calendar_sunrise_sunset_for_date(date_time, movement_location, &sunrise, &sunset)) return false;
-        sunset_minute = jewish_calendar_local_minute_from_hours(sunset);
-        *expires_at = jewish_calendar_fixed_minute(*year, *month, *day, sunset_minute / 60, sunset_minute % 60);
+
+        if (!jewish_calendar_solar_time_for_altitude(date_time, movement_location, JEWISH_CALENDAR_ALOT_DEGREES, 0, &dawn, &night_16_1)) return false;
+        dawn_minute = jewish_calendar_local_minute_from_hours(dawn);
+        *expires_at = jewish_calendar_fixed_minute(*year, *month, *day, dawn_minute / 60, dawn_minute % 60);
     } else {
         *expires_at = jewish_calendar_fixed_minute(*year, *month, *day, sunset_minute / 60, sunset_minute % 60);
     }
@@ -165,6 +166,7 @@ static void hebrew_date_update_cache(hebrew_date_state_t *state, watch_date_time
     if (!hebrew_date_get_display_date(date_time, movement_location, &gregorian_year, &gregorian_month, &gregorian_day, &after_sunset_before_alot, &expires_at)) {
         state->cached_has_location = false;
         state->cache_expires_at = state->cache_created_at + 60;
+        state->cache_alot_at = 0;
         return;
     }
 
@@ -172,6 +174,7 @@ static void hebrew_date_update_cache(hebrew_date_state_t *state, watch_date_time
     state->cached_after_sunset_before_alot = after_sunset_before_alot;
     state->cached_date = hebrew_date_from_gregorian(gregorian_year, gregorian_month, gregorian_day);
     state->cache_expires_at = expires_at;
+    state->cache_alot_at = after_sunset_before_alot ? expires_at : 0;
 }
 
 static void hebrew_date_update_display(hebrew_date_state_t *state) {
@@ -244,11 +247,6 @@ bool hebrew_date_face_loop(movement_event_t event, void *context) {
         case EVENT_LOW_ENERGY_UPDATE:
             hebrew_date_update_display(state);
             break;
-        case EVENT_LIGHT_BUTTON_UP:
-            // You can use the Light button for your own purposes. Note that by default, Movement will also
-            // illuminate the LED in response to EVENT_LIGHT_BUTTON_DOWN; to suppress that behavior, add an
-            // empty case for EVENT_LIGHT_BUTTON_DOWN.
-            break;
         case EVENT_ALARM_BUTTON_DOWN:
             break;
         case EVENT_ALARM_LONG_PRESS:
@@ -258,6 +256,7 @@ bool hebrew_date_face_loop(movement_event_t event, void *context) {
         case EVENT_ALARM_REALLY_LONG_PRESS:
             break;
         case EVENT_ALARM_LONG_UP:
+            state->suppress_alarm_hold_in_location_settings = false;
             break;
         case EVENT_ALARM_BUTTON_UP:
             state->show_year = !state->show_year;

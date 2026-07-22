@@ -1043,7 +1043,14 @@ void app_init(void) {
         movement_state.settings.bit.le_interval = MOVEMENT_DEFAULT_LOW_ENERGY_INTERVAL;
 #endif
         movement_state.settings.bit.led_duration = MOVEMENT_DEFAULT_LED_DURATION;
-
+#ifdef EMSCRIPTEN
+    if (!filesystem_file_exists("location.u32")) {
+        movement_location_t loc = {0};
+        loc.bit.latitude = 4072;
+        loc.bit.longitude = -7401;
+        filesystem_write_file("location.u32", (char *)&loc.reg, sizeof(loc));
+    }
+#endif
         movement_store_settings();
     }
 
@@ -1344,6 +1351,7 @@ bool app_loop(void) {
     if (resign_timeout && movement_state.current_face_idx != 0) {
         event.event_type = EVENT_TIMEOUT;
         can_sleep = wf->loop(event, watch_face_contexts[movement_state.current_face_idx]) && can_sleep;
+        if (!movement_state.watch_face_changed) movement_move_to_face(0);
     }
 
     // The watch_face_changed flag might be set again by the face loop, so check it again

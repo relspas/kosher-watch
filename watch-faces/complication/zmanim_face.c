@@ -193,6 +193,24 @@ static void _zmanim_add_time(zmanim_entry_t *zmanim, uint8_t *count, int16_t min
     (*count)++;
 }
 
+static void _zmanim_add_base_time_if_upcoming(zmanim_entry_t *zmanim, uint8_t *count, zmanim_entry_t *base_zmanim, uint8_t i, int16_t current_minute, bool daytime_fast, bool tisha_bav, bool yom_kippur) {
+    if (base_zmanim[i].minute <= current_minute) return;
+
+    _zmanim_add_label(zmanim, count, base_zmanim[i].label);
+    if (i == 0 && daytime_fast) _zmanim_add_label(zmanim, count, ZMANIM_LABEL_BEGIN_FAST);
+    if (i == 10 && (daytime_fast || tisha_bav || yom_kippur)) _zmanim_add_label(zmanim, count, ZMANIM_LABEL_END_FAST);
+    _zmanim_add_time(zmanim, count, base_zmanim[i].minute);
+}
+
+static void _zmanim_add_candle_time_if_upcoming(zmanim_entry_t *zmanim, uint8_t *count, int16_t candle_minute, int16_t current_minute, bool show_begin_fast, bool show_candle) {
+    if (!show_begin_fast && !show_candle) return;
+    if (candle_minute <= current_minute) return;
+
+    if (show_begin_fast) _zmanim_add_label(zmanim, count, ZMANIM_LABEL_BEGIN_FAST);
+    if (show_candle) _zmanim_add_label(zmanim, count, ZMANIM_LABEL_CANDLE);
+    _zmanim_add_time(zmanim, count, candle_minute);
+}
+
 static bool _zmanim_compute_base(zmanim_state_t *state, movement_location_t movement_location, zmanim_entry_t *zmanim) {
     (void) state;
     if (movement_location.reg == 0) return false;
@@ -246,6 +264,7 @@ static bool _zmanim_compute(zmanim_state_t *state, movement_location_t movement_
     bool erev_tisha_bav = _zmanim_is_erev_tisha_bav(today);
     bool erev_yom_kippur = _zmanim_is_erev_yom_kippur(today);
     bool candle_day = _zmanim_is_erev_candle_day(today);
+    int16_t current_minute = date_time.unit.hour * 60 + date_time.unit.minute;
     int16_t candle_minute;
 
     *count = 0;
@@ -255,58 +274,17 @@ static bool _zmanim_compute(zmanim_state_t *state, movement_location_t movement_
     if (candle_minute < 0) candle_minute += 1440;
 
     for (uint8_t i = 0; i < ZMANIM_BASE_COUNT; i++) {
-        _zmanim_add_label(zmanim, count, base_zmanim[i].label);
-        if (i == 0 && daytime_fast) _zmanim_add_label(zmanim, count, ZMANIM_LABEL_BEGIN_FAST);
-        if (i == 10 && (daytime_fast || tisha_bav || yom_kippur)) _zmanim_add_label(zmanim, count, ZMANIM_LABEL_END_FAST);
-        _zmanim_add_time(zmanim, count, base_zmanim[i].minute);
+        _zmanim_add_base_time_if_upcoming(zmanim, count, base_zmanim, i, current_minute, daytime_fast, tisha_bav, yom_kippur);
 
         if (i == 8) {
             if (erev_yom_kippur) {
-                _zmanim_add_label(zmanim, count, ZMANIM_LABEL_BEGIN_FAST);
-                _zmanim_add_label(zmanim, count, ZMANIM_LABEL_CANDLE);
-                _zmanim_add_time(zmanim, count, candle_minute);
+                _zmanim_add_candle_time_if_upcoming(zmanim, count, candle_minute, current_minute, true, true);
             } else {
-                if (erev_tisha_bav) {
-                    _zmanim_add_label(zmanim, count, ZMANIM_LABEL_BEGIN_FAST);
-                    _zmanim_add_time(zmanim, count, candle_minute);
-                }
-                if (candle_day) {
-                    _zmanim_add_label(zmanim, count, ZMANIM_LABEL_CANDLE);
-                    _zmanim_add_time(zmanim, count, candle_minute);
-                }
+                _zmanim_add_candle_time_if_upcoming(zmanim, count, candle_minute, current_minute, erev_tisha_bav, candle_day);
             }
         }
     }
 
-    return *count > 0;
-}
-
-static bool _zmanim_halakhic_midnight_expiry(watch_date_time_t date_time, movement_location_t movement_location, int32_t *expires_at) {
-    uint16_t year = date_time.unit.year + WATCH_RTC_REFERENCE_YEAR;
-    uint8_t month = date_time.unit.month;
-    uint8_t day = date_time.unit.day;
-    uint16_t next_year = year;
-    uint8_t next_month = month;
-    uint8_t next_day = day;
-    double sunrise, sunset, next_sunrise, next_sunset;
-
-    if (movement_location.reg == 0) {
-        *expires_at = jewish_calendar_next_local_midnight(date_time);
-        return true;
-    }
-
-    jewish_calendar_advance_gregorian_one_day(&next_year, &next_month, &next_day);
-    watch_date_time_t next_date_time = date_time;
-    next_date_time.unit.year = next_year - WATCH_RTC_REFERENCE_YEAR;
-    next_date_time.unit.month = next_month;
-    next_date_time.unit.day = next_day;
-
-    if (!jewish_calendar_sunrise_sunset_for_date(date_time, movement_location, &sunrise, &sunset)) return false;
-    if (!jewish_calendar_sunrise_sunset_for_date(next_date_time, movement_location, &next_sunrise, &next_sunset)) return false;
-
-    if (next_sunrise < sunset) next_sunrise += 24.0;
-
-    *expires_at = jewish_calendar_fixed_minute_from_local_hours(year, month, day, sunset + (next_sunrise - sunset) / 2.0);
     return true;
 }
 
@@ -317,6 +295,21 @@ static bool _zmanim_cache_is_current(zmanim_state_t *state, watch_date_time_t da
            state->cache_location_reg == movement_location.reg &&
            now >= state->cache_created_at &&
            now < state->cache_expires_at;
+}
+
+static bool _zmanim_next_upcoming_expiry(zmanim_entry_t *zmanim, uint8_t count, watch_date_time_t date_time, int32_t *expires_at) {
+    for (uint8_t i = 0; i < count; i++) {
+        if (!zmanim[i].is_time) continue;
+
+        *expires_at = jewish_calendar_fixed_minute(date_time.unit.year + WATCH_RTC_REFERENCE_YEAR,
+                                                   date_time.unit.month,
+                                                   date_time.unit.day,
+                                                   zmanim[i].minute / 60,
+                                                   zmanim[i].minute % 60);
+        return true;
+    }
+
+    return false;
 }
 
 static void _zmanim_update_cache(zmanim_state_t *state, watch_date_time_t date_time, movement_location_t movement_location) {
@@ -332,7 +325,9 @@ static void _zmanim_update_cache(zmanim_state_t *state, watch_date_time_t date_t
     }
 
     state->cached_has_location = true;
-    if (!_zmanim_halakhic_midnight_expiry(date_time, movement_location, &state->cache_expires_at)) {
+    if (state->cached_zmanim_count == 0) {
+        state->cache_expires_at = jewish_calendar_next_local_midnight(date_time);
+    } else if (!_zmanim_next_upcoming_expiry(state->cached_zmanim, state->cached_zmanim_count, date_time, &state->cache_expires_at)) {
         state->cache_expires_at = state->cache_created_at + 60;
     }
 }
@@ -359,10 +354,17 @@ static void _zmanim_face_update(zmanim_state_t *state) {
 
     _zmanim_ensure_cache(state);
 
-    if (!state->cached_has_location || state->cached_zmanim_count == 0) {
+    if (!state->cached_has_location) {
         watch_clear_indicator(WATCH_INDICATOR_PM);
         watch_clear_indicator(WATCH_INDICATOR_24H);
         watch_display_text(WATCH_POSITION_BOTTOM, ZMANIM_NO_LOCATION);
+        return;
+    }
+
+    if (state->cached_zmanim_count == 0) {
+        watch_clear_indicator(WATCH_INDICATOR_PM);
+        watch_clear_indicator(WATCH_INDICATOR_24H);
+        watch_display_text(WATCH_POSITION_BOTTOM, ZMANIM_NO_UPCOMING);
         return;
     }
 
@@ -449,7 +451,7 @@ bool zmanim_face_loop(movement_event_t event, void *context) {
                 state->cache_valid = false;
                 _zmanim_face_update(state);
             }
-            break;
+            return movement_default_loop_handler(event);
         case EVENT_ALARM_BUTTON_UP:
             if (_zmanim_ensure_cache(state)) {
                 state->zman_index = (state->zman_index + 1) % state->cached_zmanim_count;

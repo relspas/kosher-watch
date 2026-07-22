@@ -199,11 +199,6 @@ bool daf_yomi_face_loop(movement_event_t event, void *context) {
         case EVENT_TICK:
             daf_yomi_update_display(state);
             break;
-        case EVENT_LIGHT_BUTTON_UP:
-            // You can use the Light button for your own purposes. Note that by default, Movement will also
-            // illuminate the LED in response to EVENT_LIGHT_BUTTON_DOWN; to suppress that behavior, add an
-            // empty case for EVENT_LIGHT_BUTTON_DOWN.
-            break;
         case EVENT_ALARM_BUTTON_UP:
             daf_yomi_update_display(state);
             break;

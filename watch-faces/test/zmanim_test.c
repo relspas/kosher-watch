@@ -76,12 +76,21 @@ typedef struct {
 static const zman_time_case_t *active_zman_case;
 
 #define ASSERT_EQ_STR(expected, actual) assert_eq_str((expected), (actual), #actual, __LINE__)
+#define ASSERT_EQ_INT(expected, actual) assert_eq_int((expected), (actual), #actual, __LINE__)
 #define ASSERT_TRUE(actual) assert_true((actual), #actual, __LINE__)
 
 static void assert_eq_str(const char *expected, const char *actual, const char *expr, int line) {
     if (strcmp(expected, actual) != 0) {
         printf("%s line %d: expected %s to be \"%s\", got \"%s\"\n",
                current_test_name, line, expr, expected, actual);
+        failures++;
+    }
+}
+
+static void assert_eq_int(int32_t expected, int32_t actual, const char *expr, int line) {
+    if (expected != actual) {
+        printf("%s line %d: expected %s to be %ld, got %ld\n",
+               current_test_name, line, expr, (long)expected, (long)actual);
         failures++;
     }
 }
@@ -99,7 +108,7 @@ static zman_time_case_t default_zman_case(const char *name, uint8_t zman_index, 
         .year = 2026,
         .month = 7,
         .day = 20,
-        .hour = 12,
+        .hour = 4,
         .minute = 0,
         .latitude = 4072,
         .longitude = -7401,
@@ -483,6 +492,67 @@ static void test_erev_holiday_adds_candle_time_between_plag_and_shkia(void) {
     assert_zman_display_at(&test_case, 20, ZMANIM_LABEL_SHKIA, false);
 }
 
+static void test_only_upcoming_zmanim_are_cached(void) {
+    zman_time_case_t test_case = default_zman_case("test_only_upcoming_zmanim_are_cached", 0, "");
+    zmanim_state_t state = {0};
+
+    test_case.hour = 12;
+    reset_zmanim_test_state(&test_case);
+
+    ASSERT_TRUE(_zmanim_ensure_cache(&state));
+    ASSERT_EQ_INT(10, state.cached_zmanim_count);
+    ASSERT_EQ_INT(jewish_calendar_fixed_minute(2026, 7, 20, 12, 30), state.cache_expires_at);
+
+    state.zman_index = 0;
+    _zmanim_face_update(&state);
+    ASSERT_EQ_STR(ZMANIM_LABEL_MINCHA_GEDOLAH, displayed_bottom);
+
+    state.zman_index = 1;
+    _zmanim_face_update(&state);
+    ASSERT_EQ_STR("1230  ", displayed_bottom);
+
+    state.zman_index = 8;
+    _zmanim_face_update(&state);
+    ASSERT_EQ_STR(ZMANIM_LABEL_SEVENTY_TWO_MINUTES, displayed_bottom);
+
+    state.zman_index = 9;
+    _zmanim_face_update(&state);
+    ASSERT_EQ_STR("1912  ", displayed_bottom);
+}
+
+static void test_alarm_wraps_within_upcoming_zmanim(void) {
+    zman_time_case_t test_case = default_zman_case("test_alarm_wraps_within_upcoming_zmanim", 0, "");
+    zmanim_state_t state = {0};
+
+    test_case.hour = 12;
+    reset_zmanim_test_state(&test_case);
+
+    ASSERT_TRUE(_zmanim_ensure_cache(&state));
+    state.zman_index = state.cached_zmanim_count - 1;
+    _zmanim_face_update(&state);
+    ASSERT_EQ_STR("1912  ", displayed_bottom);
+
+    zmanim_face_loop((movement_event_t){ .event_type = EVENT_ALARM_BUTTON_UP }, &state);
+
+    ASSERT_EQ_INT(0, state.zman_index);
+    ASSERT_EQ_STR(ZMANIM_LABEL_MINCHA_GEDOLAH, displayed_bottom);
+}
+
+static void test_no_upcoming_zmanim_after_last_time(void) {
+    zman_time_case_t test_case = default_zman_case("test_no_upcoming_zmanim_after_last_time", 0, "");
+    zmanim_state_t state = {0};
+
+    test_case.hour = 20;
+    reset_zmanim_test_state(&test_case);
+
+    _zmanim_face_update(&state);
+
+    ASSERT_TRUE(state.cached_has_location);
+    ASSERT_EQ_INT(0, state.cached_zmanim_count);
+    ASSERT_EQ_INT(jewish_calendar_next_local_midnight(fake_now), state.cache_expires_at);
+    ASSERT_EQ_STR(ZMANIM_NO_UPCOMING, displayed_bottom);
+}
+
 int main(void) {
     test_alot_time();
     test_talis_time();
@@ -504,6 +574,9 @@ int main(void) {
     test_yom_kippur_adds_end_fast_before_three_stars_time();
     test_erev_shabbat_adds_candle_time_between_plag_and_shkia();
     test_erev_holiday_adds_candle_time_between_plag_and_shkia();
+    test_only_upcoming_zmanim_are_cached();
+    test_alarm_wraps_within_upcoming_zmanim();
+    test_no_upcoming_zmanim_after_last_time();
 
     if (failures) {
         printf("%d Zmanim test failure%s\n", failures, failures == 1 ? "" : "s");

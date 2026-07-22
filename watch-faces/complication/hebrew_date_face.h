@@ -50,6 +50,7 @@ typedef struct {
     bool cached_after_sunset_before_alot;
     int32_t cache_created_at;
     int32_t cache_expires_at;
+    int32_t cache_alot_at;
     uint32_t cache_location_reg;
     hebrew_date_t cached_date;
     location_settings_state_t location_settings;
